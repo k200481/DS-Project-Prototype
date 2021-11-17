@@ -75,7 +75,7 @@ void ProcessManager::Process::operator()()
 				f.value()(msg);
 			}
 		}
-		Sleep(10);
+		Sleep(2);
 	}
 }
 
@@ -90,7 +90,7 @@ ProcessManager::~ProcessManager()
 	while (!msgLine.empty())
 	{
 		Update();
-		Sleep(100);
+		Sleep(10);
 	}
 	for (auto& t : threads)
 		if (t.joinable())
@@ -99,11 +99,14 @@ ProcessManager::~ProcessManager()
 
 void ProcessManager::AddProcess()
 {
-	auto sendMsg = [this](std::unique_ptr<Message> msg) 
+	const int id = threads.size() + 1;
+	auto sendMsg = [this, id](std::unique_ptr<Message> msg) 
 	{
+		if (msg->GetMessageTypeID() == 0 || msg->GetSenderID() != id)
+			return;
 		msgLine.push(std::move(msg));
 	};
-	threads.push_back(std::thread(Process(threads.size() + 1, msgLine, mtx, sendMsg, msgHandler)));
+	threads.push_back(std::thread(Process(id, msgLine, mtx, std::move(sendMsg), msgHandler)));
 }
 
 void ProcessManager::Update()
