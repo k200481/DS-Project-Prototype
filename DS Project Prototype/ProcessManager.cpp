@@ -56,17 +56,18 @@ ProcessManager::Process::Process(int PID, std::queue<std::unique_ptr<Message>>& 
 void ProcessManager::Process::operator()()
 {
 	int prev_msg_id = -1;
-	std::optional<std::function<void(const std::unique_ptr<ProcessManager::Message>&)>> f;
 	while (true)
 	{
-		// temp scope so the lock guard is destroyed before the process goes to sleep
+		std::optional<std::function<void(const std::unique_ptr<ProcessManager::Message>&)>> f;
+		if (!incoming_messages.empty())
 		{
-			if (!incoming_messages.empty())
+			const auto& msg = incoming_messages.front();
+			if (msg->GetID() != prev_msg_id)
 			{
-				const auto& msg = incoming_messages.front();
-				if (msg->GetID() != prev_msg_id)
+				prev_msg_id = msg->GetID();
+				// temp scope so the lock guard is destroyed 
+				// before the the function is called
 				{
-					prev_msg_id = msg->GetID();
 					std::lock_guard<std::mutex> g(mtx);
 					if (!(f = msgHandler.Handle(msg)))
 						return;

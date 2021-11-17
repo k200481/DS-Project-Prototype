@@ -8,6 +8,16 @@
 #include <unordered_map>
 #include <functional>
 #include <optional>
+#include <iostream>
+
+/*
+* To do:
+*	Make the Message Handler a member and make a function to add handler functions to it
+*	Replace the messagsID system with one that uses typeids
+*
+* Future Ideas:
+*	Replacing the message queue with a priority queue
+*/
 
 class ProcessManager
 {
@@ -21,7 +31,7 @@ public:
 		// parameterized ctor, no defaults
 		Message(int typeID, int senderID);
 		// virtual dtor as many classes will be inheriting from this class
-		virtual ~Message() = default;
+		virtual ~Message() { std::cout << "Im die\n"; };
 		// id used to uniquely identify messages
 		int GetID() const;
 		// any ID to differentiate the messages
@@ -80,7 +90,7 @@ public:
 	// this will push a quit message to the queue
 	// all threads will terminate once the reach it
 	void PostQuitMessage();
-	
+	// adds a mesage to the queue to make it visible to all processes
 	void BroadcastMessage(std::unique_ptr<Message> msg)
 	{
 		msgLine.push(std::move(msg));
@@ -92,4 +102,3 @@ private:
 	std::queue<std::unique_ptr<Message>> msgLine;
 	MessageHandler msgHandler;
 };
-
