@@ -31,7 +31,7 @@ public:
 		// parameterized ctor, no defaults
 		Message(int typeID, int senderID);
 		// virtual dtor as many classes will be inheriting from this class
-		virtual ~Message() { std::cout << "Im die\n"; };
+		virtual ~Message() = default;// { std::cout << ID << ": Im die\n"; };
 		// id used to uniquely identify messages
 		int GetID() const;
 		// any ID to differentiate the messages
