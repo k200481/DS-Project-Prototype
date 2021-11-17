@@ -27,7 +27,7 @@ int ProcessManager::Message::GetSenderID() const
 std::optional<std::function<void(const std::unique_ptr<ProcessManager::Message>&)>> ProcessManager::MessageHandler::Handle(const std::unique_ptr<Message>& msg) const
 {
 	count++;
-	if (msg->GetMessageTypeID() == 0 && msg->GetSenderID() == 0)
+	if (msg->GetMessageTypeID() == 0)
 		return {};
 	else
 		return find(msg->GetMessageTypeID())->second;
