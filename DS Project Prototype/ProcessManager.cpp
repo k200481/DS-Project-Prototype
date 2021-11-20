@@ -53,6 +53,11 @@ ProcessManager::Process::Process(int PID, std::queue<std::unique_ptr<Message>>& 
 	msgHandler(msgHandler)
 {}
 
+int ProcessManager::Process::GetPID() const
+{
+	return PID;
+}
+
 void ProcessManager::Process::operator()()
 {
 	int prev_msg_id = -1;

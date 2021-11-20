@@ -71,6 +71,7 @@ public:
 			std::function<void(std::unique_ptr<Message>)> sendMessage, const MessageHandler& msgHandler);
 		// gets called one when a new thread starts execution
 		void operator()();
+		int GetPID() const;
 	private:
 		const int PID;
 		std::mutex& mtx;
