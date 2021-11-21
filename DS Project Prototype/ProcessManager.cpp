@@ -24,13 +24,16 @@ int ProcessManager::Message::GetSenderID() const
 	return senderID;
 }
 
-std::optional<std::function<void(const std::unique_ptr<ProcessManager::Message>&)>> ProcessManager::MessageHandler::Handle(const std::unique_ptr<Message>& msg) const
+std::optional<std::function<void(const std::shared_ptr<ProcessManager::Message>)>> ProcessManager::MessageHandler::Handle(const std::shared_ptr<Message> msg) const
 {
 	count++;
 	if (msg->GetMessageTypeID() == 0)
 		return {};
+	auto f = find(msg->GetMessageTypeID());
+	if (f != end())
+		return f->second;
 	else
-		return find(msg->GetMessageTypeID())->second;
+		return { [](const std::shared_ptr<ProcessManager::Message>) {} };
 }
 
 int ProcessManager::MessageHandler::GetCount() const
@@ -43,8 +46,8 @@ void ProcessManager::MessageHandler::Reset()
 	count = 0;
 }
 
-ProcessManager::Process::Process(int PID, std::queue<std::unique_ptr<Message>>& incoming_messages, std::mutex& mtx,
-	std::function<void(std::unique_ptr<Message>)> sendMessage, const MessageHandler& msgHandler)
+ProcessManager::Process::Process(int PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx,
+	std::function<void(std::shared_ptr<Message>)> sendMessage, const MessageHandler& msgHandler)
 	:
 	PID(PID),
 	mtx(mtx),
@@ -63,10 +66,10 @@ void ProcessManager::Process::operator()()
 	int prev_msg_id = -1;
 	while (true)
 	{
-		std::optional<std::function<void(const std::unique_ptr<ProcessManager::Message>&)>> f;
+		std::optional<std::function<void(const std::shared_ptr<ProcessManager::Message>)>> f;
 		if (!incoming_messages.empty())
 		{
-			const auto& msg = incoming_messages.front();
+			auto msg = incoming_messages.front();
 			if (msg->GetID() != prev_msg_id)
 			{
 				prev_msg_id = msg->GetID();
@@ -105,18 +108,18 @@ ProcessManager::~ProcessManager()
 void ProcessManager::AddProcess()
 {
 	const int id = threads.size() + 1;
-	auto sendMsg = [this, id](std::unique_ptr<Message> msg) 
+	auto sendMsg = [this, id](std::shared_ptr<Message> msg) 
 	{
 		if (msg->GetMessageTypeID() == 0 || msg->GetSenderID() != id)
 			return;
-		msgLine.push(std::move(msg));
+		msgLine.push(msg);
 	};
 	threads.push_back(std::thread(Process(id, msgLine, mtx, std::move(sendMsg), msgHandler)));
 }
 
 void ProcessManager::Update()
 {
-	if (!msgLine.empty() && msgHandler.GetCount() == threads.size())
+	if (!msgLine.empty() && msgHandler.GetCount() >= threads.size())
 	{
 		msgHandler.Reset();
 		msgLine.pop();
@@ -125,5 +128,5 @@ void ProcessManager::Update()
 
 void ProcessManager::PostQuitMessage()
 {
-	msgLine.push(std::make_unique<Message>(0, 0));
+	msgLine.push(std::make_shared<Message>(0, 0));
 }

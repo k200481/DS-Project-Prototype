@@ -13,6 +13,7 @@
 /*
 * To do:
 *	Make the Message Handler a member and make a function to add handler functions to it
+*	Make messahe handler automatically pop the msg queue when all processes have read a msg
 *	Replace the messagsID system with one that uses typeids
 *
 * Future Ideas:
@@ -50,11 +51,11 @@ public:
 	// also counts to how many times it is called, the process manager
 	// can use this information to decide if a message should be popped from the queue
 	class MessageHandler : 
-		public std::unordered_map<int, std::function<void(const std::unique_ptr<Message>&)>>
+		public std::unordered_map<int, std::function<void(const std::shared_ptr<Message>)>>
 	{
 	public:
 		// called by a process to handle messages
-		std::optional<std::function<void(const std::unique_ptr<Message>&)>> Handle(const std::unique_ptr<Message>& msg) const;
+		std::optional<std::function<void(const std::shared_ptr<Message>)>> Handle(const std::shared_ptr<Message> msg) const;
 		// ge tthe number of times the handler has been called sin the last reset
 		int GetCount() const;
 		// reset the number of messages
@@ -67,16 +68,16 @@ public:
 	class Process
 	{
 	public:
-		Process(int PID, std::queue<std::unique_ptr<Message>>& incoming_messages, std::mutex& mtx, 
-			std::function<void(std::unique_ptr<Message>)> sendMessage, const MessageHandler& msgHandler);
+		Process(int PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx, 
+			std::function<void(std::shared_ptr<Message>)> sendMessage, const MessageHandler& msgHandler);
 		// gets called one when a new thread starts execution
 		void operator()();
 		int GetPID() const;
 	private:
 		const int PID;
 		std::mutex& mtx;
-		std::queue<std::unique_ptr<Message>>& incoming_messages;
-		std::function<void(std::unique_ptr<Message>)> sendMessage;
+		std::queue<std::shared_ptr<Message>>& incoming_messages;
+		std::function<void(std::shared_ptr<Message>)> sendMessage;
 		const MessageHandler& msgHandler;
 	};
 
@@ -92,14 +93,14 @@ public:
 	// all threads will terminate once the reach it
 	void PostQuitMessage();
 	// adds a mesage to the queue to make it visible to all processes
-	void BroadcastMessage(std::unique_ptr<Message> msg)
+	void BroadcastMessage(std::shared_ptr<Message> msg)
 	{
-		msgLine.push(std::move(msg));
+		msgLine.push(msg);
 	}
 
 private:
 	std::mutex mtx;
 	std::vector<std::thread> threads;
-	std::queue<std::unique_ptr<Message>> msgLine;
+	std::queue<std::shared_ptr<Message>> msgLine;
 	MessageHandler msgHandler;
 };

@@ -56,43 +56,36 @@ int main(void)
 	};
 
 	ProcessManager::MessageHandler mh;
-	
-	mh.insert({ mh.size() + 1, [](const std::unique_ptr<ProcessManager::Message>& msg) 
-		{ 
+
+	mh.insert({ mh.size() + 1, [](const std::shared_ptr<ProcessManager::Message> msg)
+		{
 			EchoMessage new_msg(1, ((EchoMessage*)msg.get())->GetMessageString());
 			std::ostringstream oss;
 			oss << new_msg.GetSenderID() << ": " << new_msg.GetMessageString();
 			std::cout << oss.str();
 		}
-	});
-	mh.insert({ mh.size() + 1, [](const std::unique_ptr<ProcessManager::Message>& msg)
+		});
+	mh.insert({ mh.size() + 1, [](const std::shared_ptr<ProcessManager::Message> msg)
 		{
 			int num = ((PocessableMessage*)msg.get())->GetNum();
 			std::ostringstream oss;
 			oss << fun(num) << std::endl;
 			std::cout << oss.str();
 		}
-	});
-	mh.insert({ mh.size() + 1, [](const std::unique_ptr<ProcessManager::Message>& msg) 
+		});
+	mh.insert({ mh.size() + 1, [](const std::shared_ptr<ProcessManager::Message> msg)
 		{
 			Sleep(100);
-		} 
+		}
 	});
 
 	ProcessManager pm(std::move(mh));
 	pm.AddProcess();
 	pm.AddProcess();
-	pm.AddProcess();
-	pm.AddProcess();
-	pm.AddProcess();
-	pm.AddProcess();
-	pm.AddProcess();
-	pm.AddProcess();
 
-	pm.BroadcastMessage(std::make_unique<EchoMessage>(0, "Hi\n"));
-	pm.BroadcastMessage(std::make_unique<EchoMessage>(0, "Bye\n"));
-	pm.BroadcastMessage(std::make_unique<PocessableMessage>(0, 20));
-//	pm.BroadcastMessage(std::make_unique<SleepMessage>(0));
+//	pm.BroadcastMessage(std::make_shared<EchoMessage>(0, "Hi\n"));
+	pm.BroadcastMessage(std::make_shared<PocessableMessage>(0, 20));
+//	pm.BroadcastMessage(std::make_shared<EchoMessage>(0, "Bye\n"));
 
 	return 0;
 }
