@@ -44,22 +44,26 @@ public:
 		const size_t senderID;
 	};
 
+	// when possible, these typedefs should be used for one's own sanity
+	typedef std::shared_ptr<Message> MsgPtr;
+	typedef std::function<std::optional<std::string>(const MsgPtr)> Callable;
+
 	// used to define how a process will handle messages it receives
 	// also counts to how many times it is called, the process manager
 	// automatically removes messages from the queue once all processes have seen them
 	class MessageHandler
 	{
 	public:
-		MessageHandler(std::queue<std::shared_ptr<Message>>& msgLine, std::type_index quit_id);
+		MessageHandler(std::queue<MsgPtr>& msgLine, std::type_index quit_id);
 		// called by a process to handle messages
-		std::optional<std::function<void(const std::shared_ptr<Message>)>> Handle(const std::shared_ptr<Message> msg) const;
+		std::optional<Callable> Handle(const MsgPtr msg) const;
 		// MUST update this after adding a new process
 		void SetNumProcesses(size_t num_processes);
-		void AddFunc(std::type_index id, std::function<void(const std::shared_ptr<Message>)>);
+		void AddFunc(std::type_index id, Callable);
 	private:
 		size_t num_processes = 0;
-		std::unordered_map<std::type_index, std::function<void(const std::shared_ptr<Message>)>> funcMap;
-		std::queue<std::shared_ptr<Message>>& msgLine;
+		std::unordered_map<std::type_index, Callable> funcMap;
+		std::queue<MsgPtr>& msgLine;
 		mutable size_t count = 0;
 		const std::type_index quit_id;
 	};
@@ -67,8 +71,8 @@ public:
 	class Process
 	{
 	public:
-		Process(size_t PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx, 
-			std::function<void(std::shared_ptr<Message>)> sendMessage, const MessageHandler& msgHandler);
+		Process(size_t PID, std::queue<MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
+			Callable sendMessage, const MessageHandler& msgHandler);
 		// gets called one when a new thread starts execution
 		void operator()();
 		size_t GetPID() const;
@@ -76,8 +80,9 @@ public:
 		static size_t count;
 		const size_t PID;
 		std::mutex& mtx;
-		std::queue<std::shared_ptr<Message>>& incoming_messages;
-		std::function<void(std::shared_ptr<Message>)> sendMessage;
+		std::mutex& wMtx;
+		std::queue<MsgPtr>& incoming_messages;
+		Callable sendMessage;
 		const MessageHandler& msgHandler;
 	};
 
@@ -92,14 +97,14 @@ public:
 	// all threads will terminate once the reach it
 	void PostQuitMessage();
 	// adds a mesage to the queue to make it visible to all processes
-	void BroadcastMessage(std::shared_ptr<Message> msg)
+	void BroadcastMessage(MsgPtr msg)
 	{
 		msgLine.push(msg);
 	}
 	// add a handler function to the message handler
 	// try to add all the functions before adding any processes
 	// otherwise there MIGHT be some synchronization issues
-	void AddHandlerFunction(std::type_index msg_id, std::function<void(const std::shared_ptr<Message>)> func);
+	void AddHandlerFunction(std::type_index msg_id, Callable func);
 
 private:
 	class QuitMessage : public Message
@@ -112,7 +117,8 @@ private:
 	};
 private:
 	std::mutex mtx;
+	std::mutex wMtx;
 	std::vector<std::thread> threads;
-	std::queue<std::shared_ptr<Message>> msgLine;
+	std::queue<MsgPtr> msgLine;
 	MessageHandler msgHandler;
 };

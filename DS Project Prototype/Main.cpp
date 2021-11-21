@@ -28,33 +28,26 @@ std::vector<int> prime_factorisation(int num)
 int main(void)
 {
 	ProcessManager pm(5);
-
-	pm.AddHandlerFunction(typeid(EchoMessage<std::string>), 
-		[](std::shared_ptr<ProcessManager::Message> msg_in) 
-		{
-			auto msg = (EchoMessage<std::string>*)msg_in.get();
-			std::ostringstream oss;
-			oss << msg->GetMessageString();
-			std::cout << oss.str();
-		}
-	);
+	
 	pm.AddHandlerFunction(typeid(PocessableMessage<int>), 
-		[](std::shared_ptr<ProcessManager::Message> msg_in) 
+		[](ProcessManager::MsgPtr msg_in)
 		{
 			auto msg = (PocessableMessage<int>*)msg_in.get();
 			std::ostringstream oss;
 			auto res = prime_factorisation(msg->GetPayload());
-			for (int i = 0; i < res.size(); i++)
+			for (size_t i = 0; i < res.size(); i++)
 				oss << res[i] << ' ';
 			oss << std::endl;
-			std::cout << oss.str();
+			//std::cout << oss.str();
+			return oss.str();
 		}
 	);
 	pm.AddHandlerFunction(typeid(SleepMessage),
-		[](std::shared_ptr<ProcessManager::Message> msg_in)
+		[](ProcessManager::MsgPtr msg_in)
 		{
 			auto msg = (SleepMessage*)msg_in.get();
 			Sleep(msg->GetDuration());
+			return std::optional<std::string>{};
 		}
 	);
 
