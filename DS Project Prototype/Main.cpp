@@ -1,6 +1,7 @@
 #include <iostream>
 #include <sstream>
 #include "ProcessManager.h"
+#include "ProcessMessages.h"
 
 int fun(int num)
 {
@@ -9,81 +10,55 @@ int fun(int num)
 	return fun(num - 1) + fun(num - 2);
 }
 
+std::vector<int> prime_factorisation(int num)
+{
+	std::vector<int> factors;
+	for (int i = 0; i < num; i++)
+	{
+		auto n = float(num) / i;
+		if ((n - int(n)) == 0.0f)
+		{
+			factors.push_back(i);
+		}
+	}
+	factors.push_back(num);
+	return factors;
+}
+
 int main(void)
 {
-	class EchoMessage : public ProcessManager::Message
-	{
-	public:
-		EchoMessage(int senderID, const char* msg)
-			:
-			ProcessManager::Message(std::type_index(typeid(EchoMessage)), senderID),
-			msg(msg)
-		{}
+	ProcessManager pm(5);
 
-		const char* GetMessageString() const
-		{
-			return msg;
-		}
-	private:
-		const char* msg;
-	};
-
-	class PocessableMessage : public ProcessManager::Message
-	{
-	public:
-		PocessableMessage(int senderID, int num)
-			:
-			ProcessManager::Message(std::type_index(typeid(PocessableMessage)), senderID),
-			num(num)
-		{}
-
-		int GetNum() const
-		{
-			return num;
-		}
-
-	private:
-		const int num;
-	};
-
-	class SleepMessage : public ProcessManager::Message
-	{
-	public:
-		SleepMessage(int senderID)
-			:
-			ProcessManager::Message(std::type_index(typeid(SleepMessage)), senderID)
-		{}
-	};
-
-	ProcessManager pm(20);
-
-	pm.AddHandlerFunction(typeid(EchoMessage), 
+	pm.AddHandlerFunction(typeid(EchoMessage<std::string>), 
 		[](std::shared_ptr<ProcessManager::Message> msg_in) 
 		{
-			auto msg = (EchoMessage*)msg_in.get();
+			auto msg = (EchoMessage<std::string>*)msg_in.get();
 			std::ostringstream oss;
 			oss << msg->GetMessageString();
 			std::cout << oss.str();
 		}
 	);
-	pm.AddHandlerFunction(typeid(PocessableMessage), 
+	pm.AddHandlerFunction(typeid(PocessableMessage<int>), 
 		[](std::shared_ptr<ProcessManager::Message> msg_in) 
 		{
-			auto msg = (PocessableMessage*)msg_in.get();
+			auto msg = (PocessableMessage<int>*)msg_in.get();
 			std::ostringstream oss;
-			oss << fun(msg->GetNum()) << std::endl;
+			auto res = prime_factorisation(msg->GetPayload());
+			for (int i = 0; i < res.size(); i++)
+				oss << res[i] << ' ';
+			oss << std::endl;
 			std::cout << oss.str();
 		}
 	);
 	pm.AddHandlerFunction(typeid(SleepMessage),
 		[](std::shared_ptr<ProcessManager::Message> msg_in)
 		{
-			Sleep(100);
+			auto msg = (SleepMessage*)msg_in.get();
+			Sleep(msg->GetDuration());
 		}
 	);
 
-	pm.BroadcastMessage(std::make_shared<EchoMessage>(0, "Hi\n"));
-	pm.BroadcastMessage(std::make_shared<PocessableMessage>(0, 20));
-	pm.BroadcastMessage(std::make_shared<EchoMessage>(0, "Bye\n"));
+	pm.BroadcastMessage(std::make_shared<PocessableMessage<int>>(0, 20));
+	pm.BroadcastMessage(std::make_shared<SleepMessage>(0, 1000));
 	return 0;
 }
