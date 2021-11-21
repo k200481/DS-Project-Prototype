@@ -8,13 +8,10 @@
 #include <unordered_map>
 #include <functional>
 #include <optional>
-#include <iostream>
+#include <typeindex>
 
 /*
 * To do:
-*	Make the Message Handler a member and make a function to add handler functions to it
-*	Make messahe handler automatically pop the msg queue when all processes have read a msg
-*	Replace the messagsID system with one that uses typeids
 *
 * Future Ideas:
 *	Replacing the message queue with a priority queue
@@ -30,39 +27,41 @@ public:
 	{
 	public:
 		// parameterized ctor, no defaults
-		Message(int typeID, int senderID);
+		Message(std::type_index typeID, int senderID);
 		// virtual dtor as many classes will be inheriting from this class
 		virtual ~Message() = default;// { std::cout << ID << ": Im die\n"; };
 		// id used to uniquely identify messages
 		int GetID() const;
 		// any ID to differentiate the messages
 		// this MUST match with a function id in the message handler
-		int GetMessageTypeID() const;
+		std::type_index GetMessageTypeID() const;
 		// id of the process broadcasting the message (could also be main or the manager itself)
 		int GetSenderID() const;
 	private:
 		static int count;
 		const int ID;
-		const int messageTypeID;
+		std::type_index messageTypeID;
 		const int senderID;
 	};
 
 	// used to define how a process will handle messages it receives
 	// also counts to how many times it is called, the process manager
-	// can use this information to decide if a message should be popped from the queue
-	class MessageHandler : 
-		public std::unordered_map<int, std::function<void(const std::shared_ptr<Message>)>>
+	// automatically removes messages from the queue once all processes have seen them
+	class MessageHandler
 	{
 	public:
+		MessageHandler(std::queue<std::shared_ptr<Message>>& msgLine, std::type_index quit_id);
 		// called by a process to handle messages
 		std::optional<std::function<void(const std::shared_ptr<Message>)>> Handle(const std::shared_ptr<Message> msg) const;
-		// ge tthe number of times the handler has been called sin the last reset
-		int GetCount() const;
-		// reset the number of messages
-		void Reset();
-
+		// MUST update this after adding a new process
+		void SetNumProcesses(size_t num_processes);
+		void AddFunc(std::type_index id, std::function<void(const std::shared_ptr<Message>)>);
 	private:
-		mutable int count = 0;
+		size_t num_processes = 0;
+		std::unordered_map<std::type_index, std::function<void(const std::shared_ptr<Message>)>> funcMap;
+		std::queue<std::shared_ptr<Message>>& msgLine;
+		mutable size_t count = 0;
+		const std::type_index quit_id;
 	};
 
 	class Process
@@ -82,13 +81,12 @@ public:
 	};
 
 public:
-	ProcessManager(MessageHandler msgHandler);
+	ProcessManager(size_t num_processes = 0);
 	~ProcessManager();
 	// add a new process to the system
 	void AddProcess();
-	// meant to be called after some appropriate intervals
-	// if all processes are done processing a message, it will pop it from the queue
-	void Update();
+	// add multiple processes
+	void AddProcesses(size_t num_processes);
 	// this will push a quit message to the queue
 	// all threads will terminate once the reach it
 	void PostQuitMessage();
@@ -97,7 +95,20 @@ public:
 	{
 		msgLine.push(msg);
 	}
+	// add a handler function to the message handler
+	// try to add all the functions before adding any processes
+	// otherwise there MIGHT be some synchronization issues
+	void AddHandlerFunction(std::type_index msg_id, std::function<void(const std::shared_ptr<Message>)> func);
 
+private:
+	class QuitMessage : public Message
+	{
+	public:
+		QuitMessage()
+			:
+			Message(typeid(QuitMessage), 0)
+		{}
+	};
 private:
 	std::mutex mtx;
 	std::vector<std::thread> threads;

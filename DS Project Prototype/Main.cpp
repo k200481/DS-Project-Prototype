@@ -16,7 +16,7 @@ int main(void)
 	public:
 		EchoMessage(int senderID, const char* msg)
 			:
-			ProcessManager::Message(1, senderID),
+			ProcessManager::Message(std::type_index(typeid(EchoMessage)), senderID),
 			msg(msg)
 		{}
 
@@ -33,7 +33,7 @@ int main(void)
 	public:
 		PocessableMessage(int senderID, int num)
 			:
-			ProcessManager::Message(2, senderID),
+			ProcessManager::Message(std::type_index(typeid(PocessableMessage)), senderID),
 			num(num)
 		{}
 
@@ -51,41 +51,39 @@ int main(void)
 	public:
 		SleepMessage(int senderID)
 			:
-			ProcessManager::Message(3, senderID)
+			ProcessManager::Message(std::type_index(typeid(SleepMessage)), senderID)
 		{}
 	};
 
-	ProcessManager::MessageHandler mh;
+	ProcessManager pm(20);
 
-	mh.insert({ mh.size() + 1, [](const std::shared_ptr<ProcessManager::Message> msg)
+	pm.AddHandlerFunction(typeid(EchoMessage), 
+		[](std::shared_ptr<ProcessManager::Message> msg_in) 
 		{
-			EchoMessage new_msg(1, ((EchoMessage*)msg.get())->GetMessageString());
+			auto msg = (EchoMessage*)msg_in.get();
 			std::ostringstream oss;
-			oss << new_msg.GetSenderID() << ": " << new_msg.GetMessageString();
+			oss << msg->GetMessageString();
 			std::cout << oss.str();
 		}
-		});
-	mh.insert({ mh.size() + 1, [](const std::shared_ptr<ProcessManager::Message> msg)
+	);
+	pm.AddHandlerFunction(typeid(PocessableMessage), 
+		[](std::shared_ptr<ProcessManager::Message> msg_in) 
 		{
-			int num = ((PocessableMessage*)msg.get())->GetNum();
+			auto msg = (PocessableMessage*)msg_in.get();
 			std::ostringstream oss;
-			oss << fun(num) << std::endl;
+			oss << fun(msg->GetNum()) << std::endl;
 			std::cout << oss.str();
 		}
-		});
-	mh.insert({ mh.size() + 1, [](const std::shared_ptr<ProcessManager::Message> msg)
+	);
+	pm.AddHandlerFunction(typeid(SleepMessage),
+		[](std::shared_ptr<ProcessManager::Message> msg_in)
 		{
 			Sleep(100);
 		}
-	});
+	);
 
-	ProcessManager pm(std::move(mh));
-	pm.AddProcess();
-	pm.AddProcess();
-
-//	pm.BroadcastMessage(std::make_shared<EchoMessage>(0, "Hi\n"));
+	pm.BroadcastMessage(std::make_shared<EchoMessage>(0, "Hi\n"));
 	pm.BroadcastMessage(std::make_shared<PocessableMessage>(0, 20));
-//	pm.BroadcastMessage(std::make_shared<EchoMessage>(0, "Bye\n"));
-
+	pm.BroadcastMessage(std::make_shared<EchoMessage>(0, "Bye\n"));
 	return 0;
 }

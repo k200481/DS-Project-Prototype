@@ -1,7 +1,7 @@
 #include "ProcessManager.h"
 
 int ProcessManager::Message::count = 0;
-ProcessManager::Message::Message(int typeID, int senderID)
+ProcessManager::Message::Message(std::type_index typeID, int senderID)
 	:
 	messageTypeID(typeID),
 	senderID(senderID),
@@ -14,7 +14,7 @@ int ProcessManager::Message::GetID() const
 	return ID;
 }
 
-int ProcessManager::Message::GetMessageTypeID() const
+std::type_index ProcessManager::Message::GetMessageTypeID() const
 {
 	return messageTypeID;
 }
@@ -27,23 +27,37 @@ int ProcessManager::Message::GetSenderID() const
 std::optional<std::function<void(const std::shared_ptr<ProcessManager::Message>)>> ProcessManager::MessageHandler::Handle(const std::shared_ptr<Message> msg) const
 {
 	count++;
-	if (msg->GetMessageTypeID() == 0)
+	if (num_processes == count)
+	{
+		count = 0;
+		msgLine.pop();
+	}
+
+	if (msg->GetMessageTypeID() == quit_id)
 		return {};
-	auto f = find(msg->GetMessageTypeID());
-	if (f != end())
+	
+	auto f = funcMap.find(msg->GetMessageTypeID());
+	if (f != funcMap.end())
 		return f->second;
 	else
-		return { [](const std::shared_ptr<ProcessManager::Message>) {} };
+		return { [](const std::shared_ptr<ProcessManager::Message>) {} }; // might throw exception later
 }
 
-int ProcessManager::MessageHandler::GetCount() const
+ProcessManager::MessageHandler::MessageHandler(std::queue<std::shared_ptr<Message>>& msgLine, std::type_index quit_id)
+	:
+	msgLine(msgLine),
+	quit_id(quit_id)
 {
-	return count;
 }
 
-void ProcessManager::MessageHandler::Reset()
+void ProcessManager::MessageHandler::SetNumProcesses(size_t num_processes)
 {
-	count = 0;
+	this->num_processes = num_processes;
+}
+
+void ProcessManager::MessageHandler::AddFunc(std::type_index msg_id, std::function<void(const std::shared_ptr<Message>)> func)
+{
+	funcMap.insert({ msg_id, func });
 }
 
 ProcessManager::Process::Process(int PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx,
@@ -80,24 +94,26 @@ void ProcessManager::Process::operator()()
 					if (!(f = msgHandler.Handle(msg)))
 						return;
 				}
-				f.value()(msg);
+				if(msg->GetSenderID() != PID) // so the thread doesn't act on its own messages
+					f.value()(msg);
 			}
 		}
 		Sleep(2);
 	}
 }
 
-ProcessManager::ProcessManager(ProcessManager::MessageHandler msgHandler)
+ProcessManager::ProcessManager(size_t num_processes)
 	:
-	msgHandler(std::move(msgHandler))
-{}
+	msgHandler(msgLine, std::type_index(typeid(QuitMessage)))
+{
+	AddProcesses(num_processes);
+}
 
 ProcessManager::~ProcessManager()
 {
 	PostQuitMessage();
 	while (!msgLine.empty())
 	{
-		Update();
 		Sleep(10);
 	}
 	for (auto& t : threads)
@@ -110,23 +126,26 @@ void ProcessManager::AddProcess()
 	const int id = threads.size() + 1;
 	auto sendMsg = [this, id](std::shared_ptr<Message> msg) 
 	{
-		if (msg->GetMessageTypeID() == 0 || msg->GetSenderID() != id)
-			return;
+		if (msg->GetSenderID() != id) // to prevent accidentally sending messages from dif threads
+			return; // might throw exception later
 		msgLine.push(msg);
 	};
 	threads.push_back(std::thread(Process(id, msgLine, mtx, std::move(sendMsg), msgHandler)));
+	msgHandler.SetNumProcesses(threads.size());
 }
 
-void ProcessManager::Update()
+void ProcessManager::AddProcesses(size_t num_processes)
 {
-	if (!msgLine.empty() && msgHandler.GetCount() >= threads.size())
-	{
-		msgHandler.Reset();
-		msgLine.pop();
-	}
+	for (size_t i = 0; i < num_processes; i++)
+		AddProcess();
 }
 
 void ProcessManager::PostQuitMessage()
 {
-	msgLine.push(std::make_shared<Message>(0, 0));
+	msgLine.push(std::make_shared<QuitMessage>());
+}
+
+void ProcessManager::AddHandlerFunction(std::type_index msg_id, std::function<void(const std::shared_ptr<Message>)> func)
+{
+	msgHandler.AddFunc(msg_id, std::move(func));
 }
