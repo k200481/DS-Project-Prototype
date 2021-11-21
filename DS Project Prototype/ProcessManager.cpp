@@ -1,15 +1,15 @@
 #include "ProcessManager.h"
 
-int ProcessManager::Message::count = 0;
-ProcessManager::Message::Message(std::type_index typeID, int senderID)
+size_t ProcessManager::Message::count = 0;
+ProcessManager::Message::Message(std::type_index typeID, size_t senderID)
 	:
 	messageTypeID(typeID),
 	senderID(senderID),
-	ID(count++)
+	ID(++count)
 {
 }
 
-int ProcessManager::Message::GetID() const
+size_t ProcessManager::Message::GetID() const
 {
 	return ID;
 }
@@ -19,7 +19,7 @@ std::type_index ProcessManager::Message::GetMessageTypeID() const
 	return messageTypeID;
 }
 
-int ProcessManager::Message::GetSenderID() const
+size_t ProcessManager::Message::GetSenderID() const
 {
 	return senderID;
 }
@@ -60,7 +60,7 @@ void ProcessManager::MessageHandler::AddFunc(std::type_index msg_id, std::functi
 	funcMap.insert({ msg_id, func });
 }
 
-ProcessManager::Process::Process(int PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx,
+ProcessManager::Process::Process(size_t PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx,
 	std::function<void(std::shared_ptr<Message>)> sendMessage, const MessageHandler& msgHandler)
 	:
 	PID(PID),
@@ -70,14 +70,14 @@ ProcessManager::Process::Process(int PID, std::queue<std::shared_ptr<Message>>& 
 	msgHandler(msgHandler)
 {}
 
-int ProcessManager::Process::GetPID() const
+size_t ProcessManager::Process::GetPID() const
 {
 	return PID;
 }
 
 void ProcessManager::Process::operator()()
 {
-	int prev_msg_id = -1;
+	size_t prev_msg_id = 0;
 	while (true)
 	{
 		std::optional<std::function<void(const std::shared_ptr<ProcessManager::Message>)>> f;

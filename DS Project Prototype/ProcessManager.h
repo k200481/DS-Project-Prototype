@@ -27,21 +27,21 @@ public:
 	{
 	public:
 		// parameterized ctor, no defaults
-		Message(std::type_index typeID, int senderID);
+		Message(std::type_index typeID, size_t senderID);
 		// virtual dtor as many classes will be inheriting from this class
 		virtual ~Message() = default;// { std::cout << ID << ": Im die\n"; };
 		// id used to uniquely identify messages
-		int GetID() const;
+		size_t GetID() const;
 		// any ID to differentiate the messages
 		// this MUST match with a function id in the message handler
 		std::type_index GetMessageTypeID() const;
 		// id of the process broadcasting the message (could also be main or the manager itself)
-		int GetSenderID() const;
+		size_t GetSenderID() const;
 	private:
-		static int count;
-		const int ID;
+		static size_t count;
+		const size_t ID;
 		std::type_index messageTypeID;
-		const int senderID;
+		const size_t senderID;
 	};
 
 	// used to define how a process will handle messages it receives
@@ -67,13 +67,14 @@ public:
 	class Process
 	{
 	public:
-		Process(int PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx, 
+		Process(size_t PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx, 
 			std::function<void(std::shared_ptr<Message>)> sendMessage, const MessageHandler& msgHandler);
 		// gets called one when a new thread starts execution
 		void operator()();
-		int GetPID() const;
+		size_t GetPID() const;
 	private:
-		const int PID;
+		static size_t count;
+		const size_t PID;
 		std::mutex& mtx;
 		std::queue<std::shared_ptr<Message>>& incoming_messages;
 		std::function<void(std::shared_ptr<Message>)> sendMessage;
