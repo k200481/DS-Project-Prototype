@@ -57,7 +57,7 @@ void ProcessManager::MessageHandler::SetNumProcesses(size_t num_processes)
 
 void ProcessManager::MessageHandler::AddFunc(std::type_index msg_id, std::function<void(const std::shared_ptr<Message>)> func)
 {
-	funcMap.insert({ msg_id, func });
+	funcMap.insert_or_assign(msg_id, std::move(func));
 }
 
 ProcessManager::Process::Process(size_t PID, std::queue<std::shared_ptr<Message>>& incoming_messages, std::mutex& mtx,
