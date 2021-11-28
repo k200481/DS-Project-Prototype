@@ -102,7 +102,7 @@ void ProcessManager::Process::operator()()
 					if (res)
 					{
 						std::lock_guard<std::mutex> g(wMtx);
-						std::cout << res.value();
+						std::cout << PID << ": " << res.value();
 					}
 				}
 			}
