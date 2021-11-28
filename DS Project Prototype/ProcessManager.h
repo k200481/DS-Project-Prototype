@@ -12,6 +12,12 @@
 
 /*
 * 
+* Questions
+*	How exactly are blocks to be verified?
+*	What kinds of puzzles do these processes need to solve?
+*	Are we going to use cryptographic hashes?
+*	
+* 
 * Uncertain Ideas:
 * 
 * To do:
