@@ -13,11 +13,6 @@
 /*
 * 
 * Uncertain Ideas:
-*	Making a "response" class for processes to return their responses if there are any
-*	Make a func or repurpose "SendMsg" to add responses to the response queue
-*	Give processes direct write-access to the response queue
-*	Making thread a member of process instead of templating threads on processes
-*		comes with far too many benifits why didn't I do this from the start T^T
 * 
 * To do:
 *
@@ -52,6 +47,7 @@ public:
 		const size_t senderID;
 	};
 
+	// processes use this to send the results of their processing
 	class Response : public Message
 	{
 	public:
@@ -72,6 +68,7 @@ public:
 	typedef std::shared_ptr<Message> MsgPtr;
 	typedef std::function<std::optional<std::string>(const MsgPtr)> Callable;
 
+private:
 	// used to define how a process will handle messages it receives
 	// also counts to how many times it is called, the process manager
 	// automatically removes messages from the queue once all processes have seen them
@@ -92,48 +89,86 @@ public:
 		const std::type_index quit_id;
 	};
 
+	// holds the miners and data for them to use
 	class Process
 	{
+		enum class State
+		{
+			Running,
+			Waiting,
+			Terminated
+		};
 	public:
+		// no default constructors
 		Process(size_t PID, const std::queue<MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
 			Callable sendMessage, const MessageHandler& msgHandler);
-		// gets called one when a new thread starts execution
-		void operator()();
+		// joins the processes and waits for it to exit
+		~Process();
 		size_t GetPID() const;
+		
+		// check the miner's current state
+		bool Waiting() const 
+		{ 
+			return s == State::Waiting;
+		}
+		bool Terminated() const
+		{
+			return s == State::Terminated;
+		}
+		bool Running() const
+		{
+			return s == State::Running;
+		}
+
 	private:
-		static size_t count;
+		// gets called once when a new thread starts execution
+		void func();
+	private:
+		State s = State::Waiting;
+		// thread id
 		const size_t PID;
+		// everything used by the thread
+		// used when calling the message handler
 		std::mutex& mtx;
-		std::mutex& wMtx;
-		const std::queue<MsgPtr>& incoming_messages;
-		Callable sendMessage;
+		// used for getting the appropriate function to handle a message
 		const MessageHandler& msgHandler;
+		// used when calling send messages
+		std::mutex& wMtx;
+		// used to send messages outside of the thread
+		Callable sendMessage;
+		// contains messages from the outside (also potentially from othr processes)
+		const std::queue<MsgPtr>& incoming_messages;
+		// the actual process/minor
+		std::thread t;
 	};
 
 public:
-	ProcessManager(std::queue<MsgPtr>& output_queue, size_t num_processes = 0);
+	ProcessManager(size_t num_processes = 0);
 	~ProcessManager();
-	// add a new process to the system
-	void AddProcess();
-	// add multiple processes
-	void AddProcesses(size_t num_processes);
-	// this will push a quit message to the queue
-	// all threads will terminate once the reach it
-	void PostQuitMessage();
 	// adds a mesage to the queue to make it visible to all processes
 	void BroadcastMessage(MsgPtr msg)
 	{
 		msgLine.push(msg);
 	}
 	// add a handler function to the message handler
-	// try to add all the functions before adding any processes
-	// otherwise there MIGHT be some synchronization issues
 	void AddHandlerFunction(std::type_index msg_id, Callable func);
-	// check if there are any messages left to be processed
-	bool Completed() const
-	{
-		return msgLine.empty();
-	}
+	// check if processes are running or if messages are left to be processed
+	bool Completed() const;
+	// waits until Completed() returns true
+	void WaitForCompletion() const;
+	// check if the response queue has any responses in it
+	bool ResultsAreAvailable() const;
+	// removes the first recieved response from the response queue and returns it
+	MsgPtr GetFirstResponse();
+
+private:
+	// this will push a quit message to the queue
+	// all threads will terminate once the reach it
+	void PostQuitMessage();
+	// add a new process to the system
+	void AddProcess(size_t id);
+	// add multiple processes
+	void AddProcesses(size_t num_processes);
 
 private:
 	class QuitMessage : public Message
@@ -144,11 +179,12 @@ private:
 			Message(typeid(QuitMessage), 0)
 		{}
 	};
+
 private:
 	std::mutex mtx;
 	std::mutex wMtx;
-	std::vector<std::thread> threads;
+	std::vector<std::unique_ptr<Process>> processes;
 	std::queue<MsgPtr> msgLine;
-	std::queue<MsgPtr>& processResults;
+	std::queue<MsgPtr> processResults;
 	MessageHandler msgHandler;
 };

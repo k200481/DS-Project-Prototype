@@ -1,5 +1,6 @@
 #include "ProcessManager.h"
 #include <iostream>
+#include <cassert>
 
 size_t ProcessManager::Message::count = 0;
 ProcessManager::Message::Message(std::type_index typeID, size_t senderID)
@@ -69,15 +70,22 @@ ProcessManager::Process::Process(size_t PID, const std::queue<ProcessManager::Ms
 	wMtx(wMtx),
 	incoming_messages(incoming_messages),
 	sendMessage(sendMessage),
-	msgHandler(msgHandler)
+	msgHandler(msgHandler),
+	t([this]() { func(); })
 {}
+
+ProcessManager::Process::~Process()
+{
+	if (t.joinable())
+		t.join();
+}
 
 size_t ProcessManager::Process::GetPID() const
 {
 	return PID;
 }
 
-void ProcessManager::Process::operator()()
+void ProcessManager::Process::func()
 {
 	size_t prev_msg_id = 0;
 	while (true)
@@ -86,54 +94,84 @@ void ProcessManager::Process::operator()()
 		if (!incoming_messages.empty())
 		{
 			auto msg = incoming_messages.front();
-			if (msg->GetID() != prev_msg_id)
+			if (msg->GetID() != prev_msg_id && msg->GetSenderID() != PID)
 			{
+				s = State::Running;
 				prev_msg_id = msg->GetID();
 				// temp scope so the lock guard is destroyed 
 				// before the the function is called
 				{
 					std::lock_guard<std::mutex> g(mtx);
 					if (!(f = msgHandler.Handle(msg)))
-						return;
-				}
-				if (msg->GetSenderID() != PID) // so the thread doesn't act on its own messages
-				{
-					auto res = f.value()(msg);
-					if (res)
 					{
-						std::lock_guard<std::mutex> g(wMtx);
-						sendMessage(std::make_shared<Response>(PID, res.value()));
+						s = State::Terminated;
+						return;
 					}
 				}
+				auto res = f.value()(msg);
+				if (res)
+				{
+					std::lock_guard<std::mutex> g(wMtx);
+					sendMessage(std::make_shared<Response>(PID, res.value()));
+				}
+				s = State::Waiting;
 			}
 		}
 		Sleep(2);
 	}
 }
 
-ProcessManager::ProcessManager(std::queue<MsgPtr>& process_results, size_t num_processes)
+ProcessManager::ProcessManager(size_t num_processes)
 	:
-	msgHandler(msgLine, std::type_index(typeid(QuitMessage))),
-	processResults(process_results)
+	msgHandler(msgLine, std::type_index(typeid(QuitMessage)))
 {
+	assert(num_processes != 0);
 	AddProcesses(num_processes);
 }
 
 ProcessManager::~ProcessManager()
 {
 	PostQuitMessage();
-	while (!msgLine.empty())
-	{
-		Sleep(10);
-	}
-	for (auto& t : threads)
-		if (t.joinable())
-			t.join();
+	// wait for all messages to be processed
+	WaitForCompletion();
 }
 
-void ProcessManager::AddProcess()
+void ProcessManager::AddHandlerFunction(std::type_index msg_id, Callable func)
 {
-	const int id = threads.size() + 1;
+	msgHandler.AddFunc(msg_id, std::move(func));
+}
+
+bool ProcessManager::Completed() const
+{
+	for (auto& p : processes)
+	{
+		if (p->Running())
+			return false;
+	}
+	return msgLine.empty();
+}
+
+void ProcessManager::WaitForCompletion() const
+{
+	while (!Completed())
+		Sleep(10);
+}
+
+bool ProcessManager::ResultsAreAvailable() const
+{
+	return !processResults.empty();
+}
+
+ProcessManager::MsgPtr ProcessManager::GetFirstResponse()
+{
+	assert(ResultsAreAvailable());
+	auto r = processResults.front();
+	processResults.pop();
+	return r;
+}
+
+void ProcessManager::AddProcess(size_t id)
+{
 	auto sendMsg = [this, id](MsgPtr msg) 
 	{
 		if (msg->GetSenderID() != id) // to prevent accidentally sending messages from dif threads
@@ -141,22 +179,17 @@ void ProcessManager::AddProcess()
 		processResults.push(msg);
 		return std::optional<std::string>();
 	};
-	threads.push_back(std::thread(Process(id, msgLine, mtx, wMtx, std::move(sendMsg), msgHandler)));
-	msgHandler.SetNumProcesses(threads.size());
+	processes.emplace_back(std::make_unique<Process>(id, msgLine, mtx, wMtx, std::move(sendMsg), msgHandler));
+	msgHandler.SetNumProcesses(processes.size());
 }
 
 void ProcessManager::AddProcesses(size_t num_processes)
 {
 	for (size_t i = 0; i < num_processes; i++)
-		AddProcess();
+		AddProcess(i + 1);
 }
 
 void ProcessManager::PostQuitMessage()
 {
 	msgLine.push(std::make_shared<QuitMessage>());
-}
-
-void ProcessManager::AddHandlerFunction(std::type_index msg_id, Callable func)
-{
-	msgHandler.AddFunc(msg_id, std::move(func));
 }
