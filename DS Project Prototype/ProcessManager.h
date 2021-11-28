@@ -52,6 +52,22 @@ public:
 		const size_t senderID;
 	};
 
+	class Response : public Message
+	{
+	public:
+		Response(size_t sender_id, std::string res)
+			:
+			Message(typeid(Response), sender_id),
+			res(res)
+		{}
+		std::string GetResult() const
+		{
+			return res;
+		}
+	private:
+		std::string res;
+	};
+
 	// when possible, these typedefs should be used for one's own sanity
 	typedef std::shared_ptr<Message> MsgPtr;
 	typedef std::function<std::optional<std::string>(const MsgPtr)> Callable;
@@ -95,7 +111,7 @@ public:
 	};
 
 public:
-	ProcessManager(std::queue<std::string>& output_queue, size_t num_processes = 0);
+	ProcessManager(std::queue<MsgPtr>& output_queue, size_t num_processes = 0);
 	~ProcessManager();
 	// add a new process to the system
 	void AddProcess();
@@ -133,6 +149,6 @@ private:
 	std::mutex wMtx;
 	std::vector<std::thread> threads;
 	std::queue<MsgPtr> msgLine;
-	std::queue<std::string> processResults;
+	std::queue<MsgPtr>& processResults;
 	MessageHandler msgHandler;
 };

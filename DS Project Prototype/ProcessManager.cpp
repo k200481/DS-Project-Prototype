@@ -102,7 +102,7 @@ void ProcessManager::Process::operator()()
 					if (res)
 					{
 						std::lock_guard<std::mutex> g(wMtx);
-						std::cout << PID << ": " << res.value();
+						sendMessage(std::make_shared<Response>(PID, res.value()));
 					}
 				}
 			}
@@ -111,7 +111,7 @@ void ProcessManager::Process::operator()()
 	}
 }
 
-ProcessManager::ProcessManager(std::queue<std::string>& process_results, size_t num_processes)
+ProcessManager::ProcessManager(std::queue<MsgPtr>& process_results, size_t num_processes)
 	:
 	msgHandler(msgLine, std::type_index(typeid(QuitMessage))),
 	processResults(process_results)
@@ -138,7 +138,7 @@ void ProcessManager::AddProcess()
 	{
 		if (msg->GetSenderID() != id) // to prevent accidentally sending messages from dif threads
 			return std::optional<std::string>(); // might throw exception later
-		msgLine.push(msg);
+		processResults.push(msg);
 		return std::optional<std::string>();
 	};
 	threads.push_back(std::thread(Process(id, msgLine, mtx, wMtx, std::move(sendMsg), msgHandler)));
