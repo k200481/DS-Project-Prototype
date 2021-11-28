@@ -147,6 +147,7 @@
     <ClCompile Include="ProcessManager.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="nlohmann.h" />
     <ClInclude Include="ProcessManager.h" />
     <ClInclude Include="ProcessMessages.h" />
   </ItemGroup>

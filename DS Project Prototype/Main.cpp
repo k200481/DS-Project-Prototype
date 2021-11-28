@@ -21,7 +21,6 @@ std::vector<int> integer_factorisation(int num)
 int main(void)
 {
 	ProcessManager pm(5);
-
 	pm.AddHandlerFunction(typeid(PocessableMessage<int>), 
 		[](ProcessManager::MsgPtr msg_in)
 		{
@@ -33,24 +32,41 @@ int main(void)
 			return oss.str();
 		}
 	);
-	pm.AddHandlerFunction(typeid(SleepMessage),
-		[](ProcessManager::MsgPtr msg_in)
-		{
-			auto msg = (SleepMessage*)msg_in.get();
-			Sleep(msg->GetDuration());
-			return std::optional<std::string>{};
+
+	// passing some test data to the process
+	nlohmann::json block;
+
+	block["owner"] = "sarim"; // the owner of this data NOT the minor who solved the puzzle
+	block["ownerID"] = "12345"; // any unique random id
+	block["msg"] = "hi";
+	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
+	/*=================*/
+	block["owner"] = "ali"; // the owner of this data NOT the minor who solved the puzzle
+	block["ownerID"] = "12346"; // any unique random id
+	block["msg"] = "hi";
+	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
+	/*=================*/
+	block["owner"] = "sarim"; // the owner of this data NOT the minor who solved the puzzle
+	block["ownerID"] = "12345"; // any unique random id
+	block["msg"] = "bye";
+	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
+	/*=================*/
+	block["owner"] = "ali"; // the owner of this data NOT the minor who solved the puzzle
+	block["ownerID"] = "12346"; // any unique random id
+	block["msg"] = "bye";
+	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
+	/*=================*/
+
+	auto arr = pm.GetBlock(
+		[](const nlohmann::json& obj) 
+		{ 
+			return obj["ownerID"] == "12346"; 
 		}
 	);
 
-	pm.BroadcastMessage(std::make_shared<PocessableMessage<int>>(10000000));
-	pm.WaitForCompletion();
-
-	std::cout << "Processing Results\n";
-	while (pm.ResultsAreAvailable())
+	for (const auto& obj : arr)
 	{
-		auto f = pm.GetFirstResponse();
-		auto res = (ProcessManager::Response*)f.get();
-		std::cout << res->GetSenderID() << ": " << res->GetResult() << std::endl;
+		std::cout << obj << std::endl;
 	}
 
 	return 0;

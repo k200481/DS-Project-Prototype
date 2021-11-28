@@ -9,6 +9,10 @@
 #include <functional>
 #include <optional>
 #include <typeindex>
+#include <fstream>
+#include "nlohmann.h"
+#include <string>
+#include <iostream>
 
 /*
 * 
@@ -125,11 +129,44 @@ private:
 		{
 			return s == State::Running;
 		}
+		// save a pased json object
+		void SaveData(const nlohmann::json& j)
+		{
+			std::ofstream out(filename, std::ios::app);
+			out << j << std::endl;
+		}
+		// get data from the process in json form based on a given predicate
+		template <typename Pred>
+		nlohmann::json GetData(Pred p)
+		{
+			nlohmann::json arr = nlohmann::json::array();
+			std::ifstream in(filename);
+
+			try
+			{
+				while (in.peek() != EOF)
+				{
+					std::string str;
+					std::getline(in, str);
+					auto obj = nlohmann::json::parse(str);
+					if (p(obj))
+						arr.push_back(obj);
+				}
+			}
+			catch (const std::exception& e)
+			{
+				std::cout << e.what() << std::endl;
+			}
+
+			return arr;
+		}
 
 	private:
 		// gets called once when a new thread starts execution
 		void func();
 	private:
+		std::string filename;
+
 		State s = State::Waiting;
 		// thread id
 		const size_t PID;
@@ -166,6 +203,47 @@ public:
 	bool ResultsAreAvailable() const;
 	// removes the first recieved response from the response queue and returns it
 	MsgPtr GetFirstResponse();
+
+	void SaveBlock(size_t PID, nlohmann::json j)
+	{
+		for (auto& p : processes)
+		{
+			if (p->GetPID() == PID)
+			{
+				p->SaveData(j);
+				break;
+			}
+		}
+	}
+	template <typename Pred>
+	nlohmann::json GetBlock(Pred pred)
+	{
+		nlohmann::json arr = nlohmann::json::array();
+		for (auto& p : processes)
+		{
+			nlohmann::json data = p->GetData(pred);
+			arr.insert(arr.end(), data.begin(), data.end());
+		}
+		return arr;
+	}
+
+	void MineBlock(MsgPtr msg, nlohmann::json& block)
+	{
+		BroadcastMessage(msg);
+		WaitForCompletion();
+
+		auto f = GetFirstResponse();
+		while (ResultsAreAvailable()) // why did I name them like this???
+		{
+			// free up the response queue
+			// later, we'll be doing verification here
+			GetFirstResponse();
+		}
+		
+		block["minor"] = f->GetSenderID();
+		block["nonce"] = ((Response*)f.get())->GetResult();
+		SaveBlock(f->GetSenderID(), block);
+	}
 
 private:
 	// this will push a quit message to the queue

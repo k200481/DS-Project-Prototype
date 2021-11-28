@@ -72,7 +72,12 @@ ProcessManager::Process::Process(size_t PID, const std::queue<ProcessManager::Ms
 	sendMessage(sendMessage),
 	msgHandler(msgHandler),
 	t([this]() { func(); })
-{}
+{
+	std::ostringstream oss;
+	oss << "process-" << PID << ".txt";
+	filename = oss.str(); // assign a filename to the process
+	std::ofstream(filename, std::ios::app).close(); // make a new file if it does not exist
+}
 
 ProcessManager::Process::~Process()
 {
