@@ -143,7 +143,7 @@ private:
 	};
 
 public:
-	ProcessManager(size_t num_processes = 0);
+	ProcessManager(size_t num_processes);
 	~ProcessManager();
 	// adds a mesage to the queue to make it visible to all processes
 	void BroadcastMessage(MsgPtr msg)
