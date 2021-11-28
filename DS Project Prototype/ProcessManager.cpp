@@ -61,7 +61,7 @@ void ProcessManager::MessageHandler::AddFunc(std::type_index msg_id, Callable fu
 	funcMap.insert_or_assign(msg_id, std::move(func));
 }
 
-ProcessManager::Process::Process(size_t PID, std::queue<ProcessManager::MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
+ProcessManager::Process::Process(size_t PID, const std::queue<ProcessManager::MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
 	ProcessManager::Callable sendMessage, const MessageHandler& msgHandler)
 	:
 	PID(PID),
@@ -111,9 +111,10 @@ void ProcessManager::Process::operator()()
 	}
 }
 
-ProcessManager::ProcessManager(size_t num_processes)
+ProcessManager::ProcessManager(std::queue<std::string>& process_results, size_t num_processes)
 	:
-	msgHandler(msgLine, std::type_index(typeid(QuitMessage)))
+	msgHandler(msgLine, std::type_index(typeid(QuitMessage))),
+	processResults(process_results)
 {
 	AddProcesses(num_processes);
 }
@@ -133,7 +134,7 @@ ProcessManager::~ProcessManager()
 void ProcessManager::AddProcess()
 {
 	const int id = threads.size() + 1;
-	auto sendMsg = [this, id](std::shared_ptr<Message> msg) 
+	auto sendMsg = [this, id](MsgPtr msg) 
 	{
 		if (msg->GetSenderID() != id) // to prevent accidentally sending messages from dif threads
 			return std::optional<std::string>(); // might throw exception later

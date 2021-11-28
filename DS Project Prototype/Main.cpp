@@ -10,7 +10,7 @@ int fun(int num)
 	return fun(num - 1) + fun(num - 2);
 }
 
-std::vector<int> prime_factorisation(int num)
+std::vector<int> integer_factorisation(int num)
 {
 	std::vector<int> factors;
 	for (int i = 0; i < num; i++)
@@ -27,14 +27,23 @@ std::vector<int> prime_factorisation(int num)
 
 int main(void)
 {
-	ProcessManager pm(5);
-	
+	std::queue<std::string> q;
+	ProcessManager pm(q, 5);
+
+	pm.AddHandlerFunction(typeid(EchoMessage<int>),
+		[](ProcessManager::MsgPtr msg_in)
+		{
+			std::ostringstream oss;
+			oss << ((EchoMessage<int>*)msg_in.get())->GetMessageString() << std::endl;
+			return oss.str();
+		}
+	);
 	pm.AddHandlerFunction(typeid(PocessableMessage<int>), 
 		[](ProcessManager::MsgPtr msg_in)
 		{
 			auto msg = (PocessableMessage<int>*)msg_in.get();
 			std::ostringstream oss;
-			auto res = prime_factorisation(msg->GetPayload());
+			auto res = integer_factorisation(msg->GetPayload());
 			for (size_t i = 0; i < res.size(); i++)
 				oss << res[i] << ' ';
 			oss << std::endl;
@@ -51,7 +60,12 @@ int main(void)
 		}
 	);
 
-	pm.BroadcastMessage(std::make_shared<PocessableMessage<int>>(0, 20));
-	pm.BroadcastMessage(std::make_shared<SleepMessage>(0, 1000));
+	pm.BroadcastMessage(std::make_shared<PocessableMessage<int>>(20));
+	pm.BroadcastMessage(std::make_shared<EchoMessage<int>>(20));
+
+	while (!pm.Completed())
+	{
+		Sleep(10);
+	}
 	return 0;
 }

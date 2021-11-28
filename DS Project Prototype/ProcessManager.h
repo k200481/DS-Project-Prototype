@@ -71,7 +71,7 @@ public:
 	class Process
 	{
 	public:
-		Process(size_t PID, std::queue<MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
+		Process(size_t PID, const std::queue<MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
 			Callable sendMessage, const MessageHandler& msgHandler);
 		// gets called one when a new thread starts execution
 		void operator()();
@@ -81,13 +81,13 @@ public:
 		const size_t PID;
 		std::mutex& mtx;
 		std::mutex& wMtx;
-		std::queue<MsgPtr>& incoming_messages;
+		const std::queue<MsgPtr>& incoming_messages;
 		Callable sendMessage;
 		const MessageHandler& msgHandler;
 	};
 
 public:
-	ProcessManager(size_t num_processes = 0);
+	ProcessManager(std::queue<std::string>& output_queue, size_t num_processes = 0);
 	~ProcessManager();
 	// add a new process to the system
 	void AddProcess();
@@ -105,6 +105,11 @@ public:
 	// try to add all the functions before adding any processes
 	// otherwise there MIGHT be some synchronization issues
 	void AddHandlerFunction(std::type_index msg_id, Callable func);
+	// check if there are any messages left to be processed
+	bool Completed() const
+	{
+		return msgLine.empty();
+	}
 
 private:
 	class QuitMessage : public Message
@@ -120,5 +125,6 @@ private:
 	std::mutex wMtx;
 	std::vector<std::thread> threads;
 	std::queue<MsgPtr> msgLine;
+	std::queue<std::string> processResults;
 	MessageHandler msgHandler;
 };

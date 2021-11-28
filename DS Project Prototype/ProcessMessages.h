@@ -4,9 +4,9 @@ template <typename T>
 class EchoMessage : public ProcessManager::Message
 {
 public:
-	EchoMessage(size_t senderID, const T& msg)
+	EchoMessage(const T& msg)
 		:
-		ProcessManager::Message(std::type_index(typeid(EchoMessage)), senderID),
+		ProcessManager::Message(std::type_index(typeid(EchoMessage)), 0),
 		msg(msg)
 	{}
 
@@ -22,9 +22,9 @@ template <typename T>
 class PocessableMessage : public ProcessManager::Message
 {
 public:
-	PocessableMessage(size_t senderID, T msg)
+	PocessableMessage(T msg)
 		:
-		ProcessManager::Message(std::type_index(typeid(PocessableMessage)), senderID),
+		ProcessManager::Message(std::type_index(typeid(PocessableMessage)), 0),
 		msg(msg)
 	{}
 
@@ -40,9 +40,9 @@ private:
 class SleepMessage : public ProcessManager::Message
 {
 public:
-	SleepMessage(size_t senderID, size_t duration)
+	SleepMessage(size_t duration)
 		:
-		ProcessManager::Message(std::type_index(typeid(SleepMessage)), senderID),
+		ProcessManager::Message(std::type_index(typeid(SleepMessage)), 0),
 		duration(duration)
 	{}
 	size_t GetDuration()
