@@ -57,7 +57,7 @@ int main(void)
 	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
 	/*=================*/
 
-	auto arr = pm.GetBlock(
+	auto arr = pm.GetBlocks(
 		[](const nlohmann::json& obj) 
 		{ 
 			return obj["ownerID"] == "12346"; 

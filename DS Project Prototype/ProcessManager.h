@@ -130,11 +130,7 @@ private:
 			return s == State::Running;
 		}
 		// save a pased json object
-		void SaveData(const nlohmann::json& j)
-		{
-			std::ofstream out(filename, std::ios::app);
-			out << j << std::endl;
-		}
+		void SaveData(const nlohmann::json& j);
 		// get data from the process in json form based on a given predicate
 		template <typename Pred>
 		nlohmann::json GetData(Pred p)
@@ -186,37 +182,32 @@ private:
 	};
 
 public:
+	/*Basic*/
+	// ctor
 	ProcessManager(size_t num_processes);
+	// dtor
 	~ProcessManager();
-	// adds a mesage to the queue to make it visible to all processes
-	void BroadcastMessage(MsgPtr msg)
-	{
-		msgLine.push(msg);
-	}
 	// add a handler function to the message handler
 	void AddHandlerFunction(std::type_index msg_id, Callable func);
+	
+	/*Processing Management Related*/
+	// adds a mesage to the queue to make it visible to all processes
+	void BroadcastMessage(MsgPtr msg);
 	// check if processes are running or if messages are left to be processed
 	bool Completed() const;
 	// waits until Completed() returns true
 	void WaitForCompletion() const;
 	// check if the response queue has any responses in it
-	bool ResultsAreAvailable() const;
+	bool ResponsesAreAvailable() const;
 	// removes the first recieved response from the response queue and returns it
 	MsgPtr GetFirstResponse();
-
-	void SaveBlock(size_t PID, nlohmann::json j)
-	{
-		for (auto& p : processes)
-		{
-			if (p->GetPID() == PID)
-			{
-				p->SaveData(j);
-				break;
-			}
-		}
-	}
+	
+	/*Block Related*/
+	// passes given json block to the specified process to store
+	void SaveBlock(size_t PID, nlohmann::json j);
+	// returs a json array of all blocks that satisfy the given predicate
 	template <typename Pred>
-	nlohmann::json GetBlock(Pred pred)
+	nlohmann::json GetBlocks(Pred pred)
 	{
 		nlohmann::json arr = nlohmann::json::array();
 		for (auto& p : processes)
@@ -226,24 +217,9 @@ public:
 		}
 		return arr;
 	}
-
-	void MineBlock(MsgPtr msg, nlohmann::json& block)
-	{
-		BroadcastMessage(msg);
-		WaitForCompletion();
-
-		auto f = GetFirstResponse();
-		while (ResultsAreAvailable()) // why did I name them like this???
-		{
-			// free up the response queue
-			// later, we'll be doing verification here
-			GetFirstResponse();
-		}
-		
-		block["minor"] = f->GetSenderID();
-		block["nonce"] = ((Response*)f.get())->GetResult();
-		SaveBlock(f->GetSenderID(), block);
-	}
+	// broadcasts passed message to all processes, waits for processes to complete processing then 
+	// removes all responses from the queue and passes the block to the process that comleted first
+	void MineBlock(MsgPtr msg, nlohmann::json& block);
 
 private:
 	// this will push a quit message to the queue

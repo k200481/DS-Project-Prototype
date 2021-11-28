@@ -90,6 +90,12 @@ size_t ProcessManager::Process::GetPID() const
 	return PID;
 }
 
+void ProcessManager::Process::SaveData(const nlohmann::json& j)
+{
+	std::ofstream out(filename, std::ios::app);
+	out << j << std::endl;
+}
+
 void ProcessManager::Process::func()
 {
 	size_t prev_msg_id = 0;
@@ -146,6 +152,11 @@ void ProcessManager::AddHandlerFunction(std::type_index msg_id, Callable func)
 	msgHandler.AddFunc(msg_id, std::move(func));
 }
 
+void ProcessManager::BroadcastMessage(MsgPtr msg)
+{
+	msgLine.push(msg);
+}
+
 bool ProcessManager::Completed() const
 {
 	for (auto& p : processes)
@@ -162,17 +173,52 @@ void ProcessManager::WaitForCompletion() const
 		Sleep(10);
 }
 
-bool ProcessManager::ResultsAreAvailable() const
+bool ProcessManager::ResponsesAreAvailable() const
 {
 	return !processResults.empty();
 }
 
 ProcessManager::MsgPtr ProcessManager::GetFirstResponse()
 {
-	assert(ResultsAreAvailable());
+	assert(ResponsesAreAvailable());
 	auto r = processResults.front();
 	processResults.pop();
 	return r;
+}
+
+void ProcessManager::SaveBlock(size_t PID, nlohmann::json j)
+{
+	for (auto& p : processes)
+	{
+		if (p->GetPID() == PID)
+		{
+			p->SaveData(j);
+			break;
+		}
+	}
+}
+
+void ProcessManager::MineBlock(MsgPtr msg, nlohmann::json& block)
+{
+	if (ResponsesAreAvailable())
+		throw std::exception("There were unread responses in the queue when Mineblock was called");
+
+	BroadcastMessage(msg);
+	WaitForCompletion();
+
+	auto f = GetFirstResponse();
+	while (ResponsesAreAvailable())
+	{
+		// free up the response queue
+		// later, we'll be doing verification here
+		GetFirstResponse();
+	}
+
+	// add the data of the winning minor into the block
+	// also track minor's reward once that is implemented
+	block["minor"] = f->GetSenderID();
+	block["nonce"] = ((Response*)f.get())->GetResult();
+	SaveBlock(f->GetSenderID(), block);
 }
 
 void ProcessManager::AddProcess(size_t id)
