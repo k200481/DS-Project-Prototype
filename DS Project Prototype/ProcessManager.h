@@ -11,10 +11,18 @@
 #include <typeindex>
 
 /*
+* 
+* Uncertain Ideas:
+*	Making a "response" class for processes to return their responses if there are any
+*	Make a func or repurpose "SendMsg" to add responses to the response queue
+*	Give processes direct write-access to the response queue
+*	Making thread a member of process instead of templating threads on processes
+*		comes with far too many benifits why didn't I do this from the start T^T
+* 
 * To do:
 *
 * Future Ideas:
-*	Replacing the message queue with a priority queue
+*	Replacing the message/response queues with a priority queue
 */
 
 class ProcessManager
