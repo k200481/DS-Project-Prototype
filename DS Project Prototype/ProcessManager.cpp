@@ -26,7 +26,7 @@ size_t ProcessManager::Message::GetSenderID() const
 	return senderID;
 }
 
-std::optional<ProcessManager::Callable> ProcessManager::MessageHandler::Handle(const ProcessManager::MsgPtr msg) const
+std::optional<ProcessManager::Callable> ProcessManager::MessageHandlerMap::GetMessageHandler(const ProcessManager::MsgPtr msg) const
 {
 	count++;
 	if (num_processes == count)
@@ -42,28 +42,28 @@ std::optional<ProcessManager::Callable> ProcessManager::MessageHandler::Handle(c
 	if (f != funcMap.end())
 		return f->second;
 	else
-		return { [](const ProcessManager::MsgPtr) { return std::string(); } }; // might throw exception later
+		throw std::exception("Invalid Message typeid received");
 }
 
-ProcessManager::MessageHandler::MessageHandler(std::queue<std::shared_ptr<Message>>& msgLine, std::type_index quit_id)
+ProcessManager::MessageHandlerMap::MessageHandlerMap(std::queue<std::shared_ptr<Message>>& msgLine, std::type_index quit_id)
 	:
 	msgLine(msgLine),
 	quit_id(quit_id)
 {
 }
 
-void ProcessManager::MessageHandler::SetNumProcesses(size_t num_processes)
+void ProcessManager::MessageHandlerMap::SetNumProcesses(size_t num_processes)
 {
 	this->num_processes = num_processes;
 }
 
-void ProcessManager::MessageHandler::AddFunc(std::type_index msg_id, Callable func)
+void ProcessManager::MessageHandlerMap::AddFunc(std::type_index msg_id, Callable func)
 {
 	funcMap.insert_or_assign(msg_id, std::move(func));
 }
 
-ProcessManager::Process::Process(size_t PID, const std::queue<ProcessManager::MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
-	ProcessManager::Callable sendMessage, const MessageHandler& msgHandler)
+ProcessManager::Miner::Miner(size_t PID, const std::queue<ProcessManager::MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
+	std::function<std::optional<std::string>(const MsgPtr)> sendMessage, const MessageHandlerMap& msgHandler)
 	:
 	PID(PID),
 	mtx(mtx),
@@ -79,24 +79,24 @@ ProcessManager::Process::Process(size_t PID, const std::queue<ProcessManager::Ms
 	std::ofstream(filename, std::ios::app).close(); // make a new file if it does not exist
 }
 
-ProcessManager::Process::~Process()
+ProcessManager::Miner::~Miner()
 {
 	if (t.joinable())
 		t.join();
 }
 
-size_t ProcessManager::Process::GetPID() const
+size_t ProcessManager::Miner::GetPID() const
 {
 	return PID;
 }
 
-void ProcessManager::Process::SaveData(const nlohmann::json& j)
+void ProcessManager::Miner::SaveBlock(const nlohmann::json& j)
 {
 	std::ofstream out(filename, std::ios::app);
-	out << j << std::endl;
+	out << std::endl << std::setw(4) << j;
 }
 
-void ProcessManager::Process::func()
+void ProcessManager::Miner::func()
 {
 	size_t prev_msg_id = 0;
 	while (true)
@@ -113,7 +113,7 @@ void ProcessManager::Process::func()
 				// before the the function is called
 				{
 					std::lock_guard<std::mutex> g(mtx);
-					if (!(f = msgHandler.Handle(msg)))
+					if (!(f = msgHandler.GetMessageHandler(msg)))
 					{
 						s = State::Terminated;
 						return;
@@ -147,7 +147,7 @@ ProcessManager::~ProcessManager()
 	WaitForCompletion();
 }
 
-void ProcessManager::AddHandlerFunction(std::type_index msg_id, Callable func)
+void ProcessManager::AddMessageHandler(std::type_index msg_id, Callable func)
 {
 	msgHandler.AddFunc(msg_id, std::move(func));
 }
@@ -159,7 +159,7 @@ void ProcessManager::BroadcastMessage(MsgPtr msg)
 
 bool ProcessManager::Completed() const
 {
-	for (auto& p : processes)
+	for (auto& p : miners)
 	{
 		if (p->Running())
 			return false;
@@ -188,17 +188,17 @@ ProcessManager::MsgPtr ProcessManager::GetFirstResponse()
 
 void ProcessManager::SaveBlock(size_t PID, nlohmann::json j)
 {
-	for (auto& p : processes)
+	for (auto& p : miners)
 	{
 		if (p->GetPID() == PID)
 		{
-			p->SaveData(j);
+			p->SaveBlock(j);
 			break;
 		}
 	}
 }
 
-void ProcessManager::MineBlock(MsgPtr msg, nlohmann::json& block)
+size_t ProcessManager::MineBlock(MsgPtr msg)
 {
 	if (ResponsesAreAvailable())
 		throw std::exception("There were unread responses in the queue when Mineblock was called");
@@ -206,19 +206,25 @@ void ProcessManager::MineBlock(MsgPtr msg, nlohmann::json& block)
 	BroadcastMessage(msg);
 	WaitForCompletion();
 
+	int verifications = 0;
 	auto f = GetFirstResponse();
+	auto res = ((Response*)(f.get()))->GetBlock();
 	while (ResponsesAreAvailable())
 	{
-		// free up the response queue
-		// later, we'll be doing verification here
-		GetFirstResponse();
+		auto temp = GetFirstResponse();
+		if (res.GetHash() == ((Response*)(temp.get()))->GetBlock().GetHash())
+		{
+			verifications++; // signifies the number of processes that got the same hash
+			// the hash may be correct even if other processes got a different one
+		}
 	}
 
-	// add the data of the winning minor into the block
-	// also track minor's reward once that is implemented
-	block["minor"] = f->GetSenderID();
-	block["nonce"] = ((Response*)f.get())->GetResult();
+	auto block = res.GetJSON();
+	block["verified-by"] = verifications;
+	block["total miners"] = miners.size();
+	block["miner"] = f->GetSenderID();
 	SaveBlock(f->GetSenderID(), block);
+	return block["hash"];
 }
 
 void ProcessManager::AddProcess(size_t id)
@@ -226,12 +232,12 @@ void ProcessManager::AddProcess(size_t id)
 	auto sendMsg = [this, id](MsgPtr msg) 
 	{
 		if (msg->GetSenderID() != id) // to prevent accidentally sending messages from dif threads
-			return std::optional<std::string>(); // might throw exception later
+			throw std::exception("Incorrect Sender ID");
 		processResults.push(msg);
 		return std::optional<std::string>();
 	};
-	processes.emplace_back(std::make_unique<Process>(id, msgLine, mtx, wMtx, std::move(sendMsg), msgHandler));
-	msgHandler.SetNumProcesses(processes.size());
+	miners.emplace_back(std::make_unique<Miner>(id, msgLine, mtx, wMtx, std::move(sendMsg), msgHandler));
+	msgHandler.SetNumProcesses(miners.size());
 }
 
 void ProcessManager::AddProcesses(size_t num_processes)

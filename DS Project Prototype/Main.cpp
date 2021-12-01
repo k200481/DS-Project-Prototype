@@ -2,71 +2,57 @@
 #include <sstream>
 #include "ProcessManager.h"
 #include "ProcessMessages.h"
-
-std::vector<int> integer_factorisation(int num)
-{
-	std::vector<int> factors;
-	for (int i = 0; i < num; i++)
-	{
-		auto n = float(num) / i;
-		if ((n - int(n)) == 0.0f)
-		{
-			factors.push_back(i);
-		}
-	}
-	factors.push_back(num);
-	return factors;
-}
+#include "Block.h"
+#include <unordered_map>
 
 int main(void)
 {
+	srand(time(0));
 	ProcessManager pm(5);
-	pm.AddHandlerFunction(typeid(PocessableMessage<int>), 
-		[](ProcessManager::MsgPtr msg_in)
+
+	pm.AddMessageHandler(typeid(HashPuzzle2), 
+		[](ProcessManager::MsgPtr puzzle_in)
 		{
-			auto msg = (PocessableMessage<int>*)msg_in.get();
-			std::ostringstream oss;
-			auto res = integer_factorisation(msg->GetPayload());
-			for (size_t i = 0; i < res.size(); i++)
-				oss << res[i] << ' ';
-			return oss.str();
+			auto puzzle = (HashPuzzle2*)puzzle_in.get();
+			auto block = puzzle->GetBlock();
+			size_t res;
+			std::hash<std::string> str_hasher;
+			
+			size_t i = 0; // nonce
+			while (true)
+			{
+				std::ostringstream oss;
+				oss << block.GetMsg() << block.GetOwnerName() << block.GetMsg() << i;
+
+				res = str_hasher(oss.str());
+				if (puzzle->Verify(res))
+					break;
+				i = rand();
+			}
+			block.UpdateMiningInfo(res, i);
+			return block;
 		}
 	);
 
-	// passing some test data to the process
-	nlohmann::json block;
-
-	block["owner"] = "sarim"; // the owner of this data NOT the minor who solved the puzzle
-	block["ownerID"] = "12345"; // any unique random id
-	block["msg"] = "hi";
-	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
-	/*=================*/
-	block["owner"] = "ali"; // the owner of this data NOT the minor who solved the puzzle
-	block["ownerID"] = "12346"; // any unique random id
-	block["msg"] = "hi";
-	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
-	/*=================*/
-	block["owner"] = "sarim"; // the owner of this data NOT the minor who solved the puzzle
-	block["ownerID"] = "12345"; // any unique random id
-	block["msg"] = "bye";
-	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
-	/*=================*/
-	block["owner"] = "ali"; // the owner of this data NOT the minor who solved the puzzle
-	block["ownerID"] = "12346"; // any unique random id
-	block["msg"] = "bye";
-	pm.MineBlock(std::make_shared<PocessableMessage<int>>(20), block);
-	/*=================*/
-
-	auto arr = pm.GetBlocks(
-		[](const nlohmann::json& obj) 
-		{ 
-			return obj["ownerID"] == "12346"; 
-		}
-	);
-
-	for (const auto& obj : arr)
+	Block b;
+	std::ifstream in("Input.txt");
+	size_t hash = 0;
+	while (in.peek() != EOF)
 	{
-		std::cout << obj << std::endl;
+		b.ReadFromJSON(in);
+		hash = pm.MineBlock(MakePuzzle<HashPuzzle2>(b));
+	}
+
+	auto blocks = pm.GetBlocks(
+		[](const nlohmann::json& j)
+		{
+			return j["ownerID"] == "20K-0481";
+		}
+	);
+
+	for (auto& b : blocks)
+	{
+		std::cout << std::setw(4) << b << std::endl;
 	}
 
 	return 0;

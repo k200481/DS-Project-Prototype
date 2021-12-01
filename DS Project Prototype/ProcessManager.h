@@ -13,22 +13,7 @@
 #include "nlohmann.h"
 #include <string>
 #include <iostream>
-
-/*
-* 
-* Questions
-*	How exactly are blocks to be verified?
-*	What kinds of puzzles do these processes need to solve?
-*	Are we going to use cryptographic hashes?
-*	
-* 
-* Uncertain Ideas:
-* 
-* To do:
-*
-* Future Ideas:
-*	Replacing the message/response queues with a priority queue
-*/
+#include "Block.h"
 
 class ProcessManager
 {
@@ -61,33 +46,33 @@ public:
 	class Response : public Message
 	{
 	public:
-		Response(size_t sender_id, std::string res)
+		Response(size_t sender_id, const Block& res)
 			:
 			Message(typeid(Response), sender_id),
 			res(res)
 		{}
-		std::string GetResult() const
+		Block GetBlock() const
 		{
 			return res;
 		}
 	private:
-		std::string res;
+		Block res;
 	};
 
 	// when possible, these typedefs should be used for one's own sanity
 	typedef std::shared_ptr<Message> MsgPtr;
-	typedef std::function<std::optional<std::string>(const MsgPtr)> Callable;
+	typedef std::function<std::optional<Block>(const MsgPtr)> Callable;
 
 private:
 	// used to define how a process will handle messages it receives
 	// also counts to how many times it is called, the process manager
 	// automatically removes messages from the queue once all processes have seen them
-	class MessageHandler
+	class MessageHandlerMap
 	{
 	public:
-		MessageHandler(std::queue<MsgPtr>& msgLine, std::type_index quit_id);
+		MessageHandlerMap(std::queue<MsgPtr>& msgLine, std::type_index quit_id);
 		// called by a process to handle messages
-		std::optional<Callable> Handle(const MsgPtr msg) const;
+		std::optional<Callable> GetMessageHandler(const MsgPtr msg) const;
 		// MUST update this after adding a new process
 		void SetNumProcesses(size_t num_processes);
 		void AddFunc(std::type_index id, Callable);
@@ -100,7 +85,7 @@ private:
 	};
 
 	// holds the miners and data for them to use
-	class Process
+	class Miner
 	{
 		enum class State
 		{
@@ -110,10 +95,10 @@ private:
 		};
 	public:
 		// no default constructors
-		Process(size_t PID, const std::queue<MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
-			Callable sendMessage, const MessageHandler& msgHandler);
+		Miner(size_t PID, const std::queue<MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
+			std::function<std::optional<std::string>(const MsgPtr)> sendMessage, const MessageHandlerMap& msgHandler);
 		// joins the processes and waits for it to exit
-		~Process();
+		~Miner();
 		size_t GetPID() const;
 		
 		// check the miner's current state
@@ -130,10 +115,10 @@ private:
 			return s == State::Running;
 		}
 		// save a pased json object
-		void SaveData(const nlohmann::json& j);
+		void SaveBlock(const nlohmann::json& j);
 		// get data from the process in json form based on a given predicate
 		template <typename Pred>
-		nlohmann::json GetData(Pred p)
+		nlohmann::json GetBlocks(Pred p)
 		{
 			nlohmann::json arr = nlohmann::json::array();
 			std::ifstream in(filename);
@@ -142,16 +127,15 @@ private:
 			{
 				while (in.peek() != EOF)
 				{
-					std::string str;
-					std::getline(in, str);
-					auto obj = nlohmann::json::parse(str);
-					if (p(obj))
+					nlohmann::json obj;
+					in >> obj;
+					if (!obj.is_null() && p(obj))
 						arr.push_back(obj);
 				}
 			}
 			catch (const std::exception& e)
 			{
-				std::cout << e.what() << std::endl;
+				std::cout << PID << ": " << e.what() << std::endl;
 			}
 
 			return arr;
@@ -170,14 +154,14 @@ private:
 		// used when calling the message handler
 		std::mutex& mtx;
 		// used for getting the appropriate function to handle a message
-		const MessageHandler& msgHandler;
+		const MessageHandlerMap& msgHandler;
 		// used when calling send messages
 		std::mutex& wMtx;
 		// used to send messages outside of the thread
-		Callable sendMessage;
+		std::function<std::optional<std::string>(const MsgPtr)> sendMessage;
 		// contains messages from the outside (also potentially from othr processes)
 		const std::queue<MsgPtr>& incoming_messages;
-		// the actual process/minor
+		// the actual process/miner
 		std::thread t;
 	};
 
@@ -188,8 +172,37 @@ public:
 	// dtor
 	~ProcessManager();
 	// add a handler function to the message handler
-	void AddHandlerFunction(std::type_index msg_id, Callable func);
+	void AddMessageHandler(std::type_index msg_id, Callable func);
 	
+	/*Block Related*/
+	// passes given json block to the specified process to store
+	void SaveBlock(size_t PID, nlohmann::json j);
+	// returs a json array of all blocks that satisfy the given predicate
+	template <typename Pred>
+	nlohmann::json GetBlocks(Pred pred)
+	{
+		nlohmann::json arr = nlohmann::json::array();
+		for (auto& p : miners)
+		{
+			nlohmann::json data = p->GetBlocks(pred);
+			arr.insert(arr.end(), data.begin(), data.end());
+		}
+		return arr;
+	}
+	// broadcasts passed message to all processes, waits for processes to complete processing then 
+	// removes all responses from the queue and passes the block to the process that comleted first
+	// returns the hash of the mined block
+	size_t MineBlock(MsgPtr msg);
+
+private:
+	// this will push a quit message to the queue
+	// all threads will terminate once the reach it
+	void PostQuitMessage();
+	// add a new process to the system
+	void AddProcess(size_t id);
+	// add multiple processes
+	void AddProcesses(size_t num_processes);
+
 	/*Processing Management Related*/
 	// adds a mesage to the queue to make it visible to all processes
 	void BroadcastMessage(MsgPtr msg);
@@ -201,34 +214,6 @@ public:
 	bool ResponsesAreAvailable() const;
 	// removes the first recieved response from the response queue and returns it
 	MsgPtr GetFirstResponse();
-	
-	/*Block Related*/
-	// passes given json block to the specified process to store
-	void SaveBlock(size_t PID, nlohmann::json j);
-	// returs a json array of all blocks that satisfy the given predicate
-	template <typename Pred>
-	nlohmann::json GetBlocks(Pred pred)
-	{
-		nlohmann::json arr = nlohmann::json::array();
-		for (auto& p : processes)
-		{
-			nlohmann::json data = p->GetData(pred);
-			arr.insert(arr.end(), data.begin(), data.end());
-		}
-		return arr;
-	}
-	// broadcasts passed message to all processes, waits for processes to complete processing then 
-	// removes all responses from the queue and passes the block to the process that comleted first
-	void MineBlock(MsgPtr msg, nlohmann::json& block);
-
-private:
-	// this will push a quit message to the queue
-	// all threads will terminate once the reach it
-	void PostQuitMessage();
-	// add a new process to the system
-	void AddProcess(size_t id);
-	// add multiple processes
-	void AddProcesses(size_t num_processes);
 
 private:
 	class QuitMessage : public Message
@@ -243,8 +228,8 @@ private:
 private:
 	std::mutex mtx;
 	std::mutex wMtx;
-	std::vector<std::unique_ptr<Process>> processes;
+	std::vector<std::unique_ptr<Miner>> miners;
 	std::queue<MsgPtr> msgLine;
 	std::queue<MsgPtr> processResults;
-	MessageHandler msgHandler;
+	MessageHandlerMap msgHandler;
 };

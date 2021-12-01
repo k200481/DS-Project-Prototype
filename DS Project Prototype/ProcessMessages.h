@@ -1,54 +1,60 @@
 #pragma once
 #include "ProcessManager.h"
-template <typename T>
-class EchoMessage : public ProcessManager::Message
+#include "Block.h"
+
+class HashPuzzle1 : public ProcessManager::Message
 {
 public:
-	EchoMessage(const T& msg)
+	HashPuzzle1(const Block& block)
 		:
-		ProcessManager::Message(std::type_index(typeid(EchoMessage)), 0),
-		msg(msg)
-	{}
-
-	const T& GetMessageString() const
+		ProcessManager::Message(std::type_index(typeid(HashPuzzle1)), 0),
+		block(block)
 	{
-		return msg;
+		modResReq = rand() % 100;
+		modVal = modResReq + rand() % 2000;
+		std::cout << modVal << ' ' << modResReq << std::endl;
+	}
+	// returns the block passed to it
+	Block GetBlock() const
+	{
+		return block;
+	}
+	// used to verify if a hash satisfies the given conditions
+	bool Verify(size_t hash) const
+	{
+		return (hash % modVal) == modResReq;
 	}
 private:
-	T msg;
+	Block block;
+	unsigned int modVal;
+	unsigned int modResReq;
 };
 
-template <typename T>
-class PocessableMessage : public ProcessManager::Message
+class HashPuzzle2 : public ProcessManager::Message
 {
 public:
-	PocessableMessage(T msg)
+	HashPuzzle2(const Block& block)
 		:
-		ProcessManager::Message(std::type_index(typeid(PocessableMessage)), 0),
-		msg(msg)
-	{}
-
-	const T& GetPayload() const
+		ProcessManager::Message(std::type_index(typeid(HashPuzzle2)), 0),
+		block(block)
 	{
-		return msg;
 	}
-
+	// returns the block passed to it
+	Block GetBlock() const
+	{
+		return block;
+	}
+	// used to verify if a hash satisfies the given conditions
+	bool Verify(size_t hash) const
+	{
+		return (hash % 10) == 0;
+	}
 private:
-	const T msg;
+	Block block;
 };
 
-class SleepMessage : public ProcessManager::Message
+template <typename T1, typename T2>
+std::shared_ptr<T1> MakePuzzle(const T2& t)
 {
-public:
-	SleepMessage(size_t duration)
-		:
-		ProcessManager::Message(std::type_index(typeid(SleepMessage)), 0),
-		duration(duration)
-	{}
-	size_t GetDuration()
-	{
-		return duration;
-	}
-private:
-	const size_t duration;
-};
+	return std::make_shared<T1>(t);
+}
