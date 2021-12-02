@@ -153,6 +153,9 @@
     <ClInclude Include="ProcessManager.h" />
     <ClInclude Include="ProcessMessages.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="Input.txt" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
