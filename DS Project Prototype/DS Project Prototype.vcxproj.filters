@@ -15,27 +15,27 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Block.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ProcessManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Block.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ProcessManager.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ProcessMessages.h">
+    <ClInclude Include="Block.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="nlohmann.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Block.h">
+    <ClInclude Include="ProcessManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProcessMessages.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
