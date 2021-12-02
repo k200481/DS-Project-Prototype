@@ -62,7 +62,7 @@ public:
 
 		hash = res_hash;
 		nonce = res_nonce;
-		timestamp = system_clock::to_time_t(utc_clock::to_sys(utc_clock::now()));
+		timestamp = system_clock::to_time_t(system_clock::now());
 	}
 
 private:

@@ -40,8 +40,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="Input.txt">
-      <Filter>Resource Files</Filter>
-    </Text>
+    <Text Include="Input.txt" />
   </ItemGroup>
 </Project>
