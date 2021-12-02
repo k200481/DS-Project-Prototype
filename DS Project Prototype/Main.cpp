@@ -10,10 +10,10 @@ int main(void)
 	srand(time(0));
 	ProcessManager pm(5);
 
-	pm.AddMessageHandler(typeid(HashPuzzle2), 
+	pm.AddMessageHandler(typeid(HashPuzzle1), 
 		[](ProcessManager::MsgPtr puzzle_in)
 		{
-			auto puzzle = (HashPuzzle2*)puzzle_in.get();
+			auto puzzle = (HashPuzzle1*)puzzle_in.get();
 			auto block = puzzle->GetBlock();
 			size_t res;
 			std::hash<std::string> str_hasher;
@@ -40,7 +40,7 @@ int main(void)
 	while (in.peek() != EOF)
 	{
 		b.ReadFromJSON(in);
-		hash = pm.MineBlock(MakePuzzle<HashPuzzle2>(b));
+		hash = pm.MineBlock(MakePuzzle<HashPuzzle1>(b));
 	}
 
 	auto blocks = pm.GetBlocks(

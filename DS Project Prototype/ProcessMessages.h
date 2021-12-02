@@ -12,7 +12,6 @@ public:
 	{
 		modResReq = rand() % 100;
 		modVal = modResReq + rand() % 2000;
-		std::cout << modVal << ' ' << modResReq << std::endl;
 	}
 	// returns the block passed to it
 	Block GetBlock() const
