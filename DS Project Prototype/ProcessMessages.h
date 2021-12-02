@@ -11,7 +11,7 @@ public:
 		block(block)
 	{
 		modResReq = rand() % 100;
-		modVal = modResReq + rand() % 2000;
+		modVal = 1 + modResReq + rand() % 2000;
 	}
 	// returns the block passed to it
 	Block GetBlock() const
