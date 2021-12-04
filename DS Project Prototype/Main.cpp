@@ -1,35 +1,33 @@
 #include <iostream>
 #include <sstream>
-#include "ProcessManager.h"
-#include "ProcessMessages.h"
+#include "NetworkManager.h"
+#include "Puzzles.h"
 #include "Block.h"
 #include <unordered_map>
+#include <fstream>
+
+using namespace Blockchain;
 
 int main(void)
 {
 	srand(time(0));
-	ProcessManager pm(5);
+	NetworkManager manager(5);
 
-	pm.AddMessageHandler(typeid(HashPuzzle1), 
-		[](ProcessManager::MsgPtr puzzle_in)
+	manager.AddMessageHandler(typeid(HashPuzzle2), 
+		[](size_t minerID, MsgPtr puzzle_in)
 		{
-			auto puzzle = (HashPuzzle1*)puzzle_in.get();
+			auto puzzle = (HashPuzzle2*)puzzle_in.get();
 			auto block = puzzle->GetBlock();
-			size_t res;
-			std::hash<std::string> str_hasher;
 			
 			size_t i = 0; // nonce
 			while (true)
 			{
-				std::ostringstream oss;
-				oss << block.GetMsg() << block.GetOwnerName() << block.GetMsg() << i;
-
-				res = str_hasher(oss.str());
-				if (puzzle->Verify(res))
+				block.Mine(minerID, i);
+				if (puzzle->Verify(block))
 					break;
-				i = rand();
+				i++;
 			}
-			block.UpdateMiningInfo(res, i);
+
 			return block;
 		}
 	);
@@ -39,11 +37,11 @@ int main(void)
 	size_t hash = 0;
 	while (in.peek() != EOF)
 	{
-		b.ReadFromJSON(in);
-		hash = pm.MineBlock(MakePuzzle<HashPuzzle1>(b));
+		in >> b;
+		hash = manager.MineBlock(MakePuzzle<HashPuzzle2>(b));
 	}
 
-	auto blocks = pm.GetBlocks(
+	auto blocks = manager.GetBlocks(
 		[](const nlohmann::json& j)
 		{
 			return j["ownerID"] == "20K-0481";
