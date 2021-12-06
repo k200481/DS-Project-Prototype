@@ -6,15 +6,18 @@
 
 using namespace Blockchain;
 
-Miner::Miner(size_t PID, const std::queue<MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
-	std::function<void(const MsgPtr)> sendMessage, const MessageHandlerMap& msgHandler)
+Miner::Miner(size_t PID, std::mutex& mtx, std::mutex& wMtx,
+	std::function<void(const MsgPtr)> sendMessage,
+	std::function<std::optional<MsgPtr>(size_t)> getMessage,
+	const std::unordered_map<std::type_index, Callable>& msgHandlerMap
+)
 	:
 	PID(PID),
 	mtx(mtx),
 	wMtx(wMtx),
-	incoming_messages(incoming_messages),
+	getMessage(getMessage),
 	sendMessage(sendMessage),
-	msgHandler(msgHandler),
+	msgHandlerMap(msgHandlerMap),
 	t([this]() { func(); })
 {
 	std::ostringstream oss;
@@ -57,35 +60,32 @@ void Miner::SaveBlock(const nlohmann::json& j)
 
 void Miner::func()
 {
-	size_t prev_msg_id = 0;
 	while (true)
 	{
-		std::optional<Callable> f;
-		if (!incoming_messages.empty())
+		std::optional<MsgPtr> msg;
+		Callable f;
+		// temp scope so lock guard is destroyed immediatlely
 		{
-			auto msg = incoming_messages.front();
-			if (msg->GetID() != prev_msg_id && msg->GetSenderID() != PID)
+			std::lock_guard g(mtx);
+			msg = getMessage(PID);
+		}
+		if (msg.has_value())
+		{
+			s = State::Running;
+			if (msg.value()->GetTypeID() == typeid(QuitMessage))
 			{
-				s = State::Running;
-				prev_msg_id = msg->GetID();
-				// temp scope so the lock guard is destroyed 
-				// before the the function is called
-				{
-					std::lock_guard<std::mutex> g(mtx);
-					if (!(f = msgHandler.GetMessageHandler(msg)))
-					{
-						s = State::Terminated;
-						return;
-					}
-				}
-				auto res = f.value()(PID, msg);
-				if (res)
-				{
-					std::lock_guard<std::mutex> g(wMtx);
-					sendMessage(std::make_shared<Solution>(PID, res.value()));
-				}
-				s = State::Waiting;
+				s = State::Terminated;
+				return;
 			}
+			f = msgHandlerMap.at(msg.value()->GetTypeID());
+			
+			auto res = f(PID, msg.value());
+			if (res)
+			{
+				std::lock_guard<std::mutex> g(wMtx);
+				sendMessage(std::make_shared<Solution>(PID, res.value()));
+			}
+			s = State::Waiting;
 		}
 		Sleep(2);
 	}

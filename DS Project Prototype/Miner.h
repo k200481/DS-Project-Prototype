@@ -8,14 +8,14 @@
 #include <fstream>
 #include "Message.h"
 #include "nlohmann.h"
+#include "Block.h"
 #include <iostream>
 
 namespace Blockchain
 {
-	class MessageHandlerMap;
 	// these are the functions that are called in response to a message
 	// they may or may not return blocks, hence theuse of std::optional
-	typedef std::function<std::optional<class Block>(size_t, const MsgPtr)> Callable;
+	typedef std::function<std::optional<Block>(size_t, const MsgPtr)> Callable;
 
 	// miners can be configured to react a certain way to specific mesage types
 	// using the MessageHandlerMap class
@@ -23,6 +23,7 @@ namespace Blockchain
 	// an empty optional to indicate termination
 	class Miner
 	{
+	private:
 		enum class State
 		{
 			Running,
@@ -30,9 +31,25 @@ namespace Blockchain
 			Terminated,
 		};
 	public:
+		class QuitMessage : public Message
+		{
+		public:
+			QuitMessage()
+				:
+				Message(0)
+			{}
+			virtual std::type_index GetTypeID() const
+			{
+				return typeid(QuitMessage);
+			}
+		};
+	public:
 		// no default constructors
-		Miner(size_t PID, const std::queue<MsgPtr>& incoming_messages, std::mutex& mtx, std::mutex& wMtx,
-			std::function<void(const MsgPtr)> sendMessage, const MessageHandlerMap& msgHandler);
+		Miner(size_t PID, std::mutex& mtx, std::mutex& wMtx, 
+			std::function<void(const MsgPtr)> sendMessage,
+			std::function<std::optional<MsgPtr>(size_t)> getMessage,
+			const std::unordered_map<std::type_index, Callable>& msgHandlerMap
+		);
 		// joins the processes and waits for it to exit
 		~Miner();
 		size_t GetPID() const;
@@ -80,14 +97,14 @@ namespace Blockchain
 		// everything used by the thread
 		// used when calling the message handler
 		std::mutex& mtx;
-		// used for getting the appropriate function to handle a message
-		const MessageHandlerMap& msgHandler;
 		// used when calling send messages
 		std::mutex& wMtx;
+		// used to get messages, should return a QuitMessage to indicate termination
+		std::function<std::optional<MsgPtr>(size_t)> getMessage;
 		// used to send messages outside of the thread
 		std::function<void(const MsgPtr)> sendMessage;
-		// contains messages from the outside (also potentially from othr processes)
-		const std::queue<MsgPtr>& incoming_messages;
+		// used to configure how messages are handled
+		const std::unordered_map<std::type_index, Callable>& msgHandlerMap;
 		// the actual process/miner
 		std::thread t;
 	};

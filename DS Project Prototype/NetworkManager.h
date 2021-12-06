@@ -9,28 +9,6 @@
 
 namespace Blockchain
 {
-	// used to define how a miner will react to messages it receives
-	// also counts to how many times it is called and automatically removes 
-	// messages from the queue once all miners have seen them
-	// doesn't feel right putting it outside of network manager since it is
-	// so closely tied to it, but have to for the system to work
-	class MessageHandlerMap
-	{
-	public:
-		MessageHandlerMap(std::queue<MsgPtr>& msgLine, std::type_index quit_id);
-		// returns a function depending on the message typeID
-		std::optional<Callable> GetMessageHandler(const MsgPtr msg) const;
-		// MUST update this after adding a new process
-		void SetNumMiners(size_t numMiners);
-		void AddFunc(std::type_index id, Callable);
-	private:
-		size_t numMiners = 0;
-		std::unordered_map<std::type_index, Callable> funcMap;
-		std::queue<MsgPtr>& msgLine;
-		mutable size_t count = 0;
-		const std::type_index quit_id;
-	};
-
 	class NetworkManager
 	{
 	public:
@@ -60,7 +38,8 @@ namespace Blockchain
 		// broadcasts passed message to all processes, waits for processes to complete processing then 
 		// removes all responses from the queue and passes the block to the process that comleted first
 		// returns true if mining was successful, false otherwise
-		bool MineBlock(MsgPtr msg);
+		template <typename MsgT>
+		bool MineBlock(const Block& block);
 
 	private:
 		// this will push a quit message to the queue
@@ -73,7 +52,10 @@ namespace Blockchain
 
 		/*Processing Management Related*/
 		// adds a mesage to the queue to make it visible to all processes
-		void BroadcastMessage(MsgPtr msg);
+		template <typename MsgT, typename DataT>
+		void BroadcastMessage(DataT data);
+		template <typename MsgT>
+		void BroadcastMessage();
 		// check if processes are running or if messages are left to be processed
 		bool Completed() const;
 		// waits until Completed() returns true
@@ -82,28 +64,19 @@ namespace Blockchain
 		bool ResponsesAreAvailable() const;
 		// removes the first recieved response from the response queue and returns it
 		MsgPtr GetFirstResponse();
-
-	private:
-		class QuitMessage : public Message
-		{
-		public:
-			QuitMessage()
-				:
-				Message(0)
-			{}
-			virtual std::type_index GetTypeID() const override
-			{
-				return typeid(QuitMessage);
-			}
-		};
+		// miners use this to get messages from the message queue
+		std::optional<MsgPtr> MessageHandler(size_t PID);
 
 	private:
 		std::mutex mtx;
 		std::mutex wMtx;
 		std::vector<std::unique_ptr<class Miner>> miners;
 		std::queue<MsgPtr> msgLine;
-		std::queue<MsgPtr> processResults;
-		MessageHandlerMap msgHandler;
+		std::queue<MsgPtr> solutions;
+		std::unordered_map<std::type_index, Callable> msgHandlerMap;
+		
+		size_t readCount = 0;
+		std::vector<bool> msgReadBy;
 	};
 }
 

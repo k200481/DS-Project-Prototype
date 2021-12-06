@@ -38,7 +38,7 @@ int main(void)
 	while (in.peek() != EOF)
 	{
 		in >> b;
-		hash = manager.MineBlock(MakePuzzle<HashPuzzle2>(b));
+		hash = manager.MineBlock<HashPuzzle2>(b);
 	}
 
 	auto blocks = manager.GetBlocks(

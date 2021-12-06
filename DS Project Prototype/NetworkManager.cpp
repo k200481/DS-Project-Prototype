@@ -5,47 +5,7 @@
 
 using namespace Blockchain;
 
-MessageHandlerMap::MessageHandlerMap(std::queue<std::shared_ptr<Message>>& msgLine, std::type_index quit_id)
-	:
-	msgLine(msgLine),
-	quit_id(quit_id)
-{
-}
-
-std::optional<Callable> MessageHandlerMap::GetMessageHandler(const MsgPtr msg) const
-{
-	count++;
-	if (numMiners == count)
-	{
-		count = 0;
-		msgLine.pop();
-	}
-
-	if (msg->GetTypeID() == quit_id)
-		return {};
-	
-	auto f = funcMap.find(msg->GetTypeID());
-	if (f != funcMap.end())
-		return f->second;
-	else
-		throw std::exception("Invalid Message typeid received");
-}
-
-void MessageHandlerMap::SetNumMiners(size_t numMiners)
-{
-	this->numMiners = numMiners;
-}
-
-void MessageHandlerMap::AddFunc(std::type_index msg_id, Callable func)
-{
-	funcMap.insert_or_assign(msg_id, std::move(func));
-}
-
-
-
 NetworkManager::NetworkManager(size_t num_processes)
-	:
-	msgHandler(msgLine, std::type_index(typeid(QuitMessage)))
 {
 	assert(num_processes != 0);
 	AddProcesses(num_processes);
@@ -60,12 +20,18 @@ NetworkManager::~NetworkManager()
 
 void NetworkManager::AddMessageHandler(std::type_index msg_id, Callable func)
 {
-	msgHandler.AddFunc(msg_id, std::move(func));
+	msgHandlerMap.insert_or_assign(msg_id, std::move(func));
 }
 
-void NetworkManager::BroadcastMessage(MsgPtr msg)
+template <typename MsgT, typename DataT>
+void NetworkManager::BroadcastMessage(DataT data)
 {
-	msgLine.push(msg);
+	msgLine.push(std::make_shared<MsgT>(data));
+}
+template <typename MsgT>
+void NetworkManager::BroadcastMessage()
+{
+	msgLine.push(std::make_shared<MsgT>());
 }
 
 bool NetworkManager::Completed() const
@@ -86,15 +52,34 @@ void NetworkManager::WaitForCompletion() const
 
 bool NetworkManager::ResponsesAreAvailable() const
 {
-	return !processResults.empty();
+	return !solutions.empty();
 }
 
 MsgPtr NetworkManager::GetFirstResponse()
 {
 	assert(ResponsesAreAvailable());
-	auto r = processResults.front();
-	processResults.pop();
+	auto r = solutions.front();
+	solutions.pop();
 	return r;
+}
+
+std::optional<MsgPtr> Blockchain::NetworkManager::MessageHandler(size_t PID)
+{
+	if (msgLine.empty() || msgReadBy[PID - 1])
+	{
+		return {};
+	}
+	msgReadBy[PID - 1] = true;
+
+	auto f = msgLine.front();
+	readCount++;
+	if (readCount == miners.size())
+	{
+		msgLine.pop();
+		msgReadBy.flip();
+		readCount = 0;
+	}
+	return f;
 }
 
 void NetworkManager::SaveBlock(size_t PID, nlohmann::json j)
@@ -109,12 +94,13 @@ void NetworkManager::SaveBlock(size_t PID, nlohmann::json j)
 	}
 }
 
-bool NetworkManager::MineBlock(MsgPtr msg)
+template <typename MsgT>
+bool NetworkManager::MineBlock(const Block& block)
 {
 	if (ResponsesAreAvailable())
 		throw std::exception("There were unread responses in the queue when Mineblock was called");
 
-	BroadcastMessage(msg);
+	BroadcastMessage<MsgT>(block);
 	WaitForCompletion();
 
 	int verifications = 0;
@@ -148,23 +134,33 @@ bool NetworkManager::MineBlock(MsgPtr msg)
 		}
 	}
 
-	auto block = res.GetJSON();
-	block["verified-by"] = verifications;
-	block["total miners"] = miners.size();
-	SaveBlock(f->GetSenderID(), block);
+	auto mined_block = res.GetJSON();
+	mined_block["verified-by"] = verifications;
+	mined_block["total miners"] = miners.size();
+	SaveBlock(f->GetSenderID(), mined_block);
 	return true;
 }
 
+template bool NetworkManager::MineBlock<HashPuzzle1>(const Block&);
+template bool NetworkManager::MineBlock<HashPuzzle2>(const Block&);
+
 void NetworkManager::AddProcess(size_t id)
 {
-	auto sendMsg = [this, id](MsgPtr msg) 
+	auto sendMsg = [this, id](MsgPtr msg)
 	{
 		if (msg->GetSenderID() != id) // to prevent accidentally sending messages from dif threads
 			throw std::exception("Incorrect Sender ID");
-		processResults.push(msg);
+
+		solutions.push(msg);
 	};
-	miners.emplace_back(std::make_unique<Miner>(id, msgLine, mtx, wMtx, std::move(sendMsg), msgHandler));
-	msgHandler.SetNumMiners(miners.size());
+	miners.emplace_back(
+		std::make_unique<Miner>(
+			id, mtx, wMtx, std::move(sendMsg),
+			[this](size_t PID)->std::optional<MsgPtr> { return MessageHandler(PID); },
+			msgHandlerMap
+		)
+	);
+	msgReadBy.emplace_back(false);
 }
 
 void NetworkManager::AddProcesses(size_t num_processes)
@@ -175,5 +171,5 @@ void NetworkManager::AddProcesses(size_t num_processes)
 
 void NetworkManager::PostQuitMessage()
 {
-	msgLine.push(std::make_shared<QuitMessage>());
+	msgLine.push(std::make_shared<Miner::QuitMessage>());
 }
